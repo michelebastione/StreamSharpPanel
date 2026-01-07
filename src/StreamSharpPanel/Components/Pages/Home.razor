@@ -1,0 +1,216 @@
+﻿@implements IAsyncDisposable
+
+@inject ISnackbar Popup
+@inject IDialogService Dialog
+@inject EventSubService Events
+@inject StateService State
+@inject SettingsService Settings
+@inject ApiCallerService Api
+@inject AssetService Asset
+
+@page "/"
+<PageTitle>Dashboard</PageTitle>
+
+<MudStack Row Breakpoint="Breakpoint.Xs">
+    <MudButton OnClick="@ShowStreamSettings" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.Edit" IconSize="Size.Large">Edit Stream Information</MudButton>
+    <MudButton OnClick="@(() => Popup.Add("Clips capability is coming soon!"))" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.Movie" IconSize="Size.Large">Create Clip</MudButton>
+    <MudButton onclick="@(() => Popup.Add("Raid capability is coming soon!"))" Variant="Variant.Filled" color="Color.Secondary" StartIcon="@Icons.Material.Outlined.Paragliding" IconSize="Size.Large">Raid a Channel</MudButton>
+</MudStack>
+
+<MudGrid Spacing="2" Class="mt-3">
+    <MudItem xs="12" sm="6" md="5" lg="4" xl="3">
+        <TwitchChannelFeed BroadcasterId="@_userId" BroadcasterUsername="@_userLogin" Height="30rem" />
+    </MudItem>
+
+    <MudItem xs="12" sm="6" md="5" lg="4" xl="3">
+        <TwitchChannelChat BroadcasterId="@_userId" BroadcasterUsername="@_userLogin" Height="30rem" />
+    </MudItem>
+
+    @foreach (var chat in _chats)
+    {
+        <MudItem @key="@chat.Id" xs="4">
+            <TwitchChannelChat BroadcasterId="@chat.Id" BroadcasterUsername="@chat.Username" />
+        </MudItem>
+    }
+
+    @* <MudItem xs="3">
+        <div class="h-100 d-flex justify-content-center align-items-center new-chat">
+            <MudText Typo="Typo.h6">+ Add</MudText>
+        </div>
+    </MudItem> *@
+</MudGrid>
+
+<MudStack Row Class="mt-3">
+    <MudButton OnClick="@Connect" Color="Color.Primary" Variant="Variant.Filled" DropShadow="false" Class="mt-2">Connect</MudButton>
+    <MudButton OnClick="@Disconnect" Color="Color.Primary" Variant="Variant.Filled" DropShadow="false" Class="mt-2">Disconnect</MudButton>
+    @* <MudFab StartIcon="@Icons.Material.Filled.Add" Size="Size.Small" OnClick="@(() => AddChat("", ""))" /> *@
+</MudStack>
+
+
+@code {
+    List<(string Id, string Username)> _chats = [];
+
+    private string _userId = "";
+    private string _userLogin = "";
+
+    private string SomeColor => State.IsDarkMode ? "grey" : "gainsboro";
+    private string SomeOtherColor => State.IsDarkMode ? "white" : "black";
+
+    protected override void OnInitialized()
+    {
+        _userId = Settings.CurrentSettings.UserId;
+        _userLogin = Settings.CurrentSettings.Login;
+
+        State.OnDarkModeChanged += RefreshScreen;
+        Settings.OnSettingsUpdated += RefreshData;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender &&
+            !string.IsNullOrEmpty(Settings.CurrentSettings.OauthToken) &&
+            !await Asset.UpdateGlobalAssetsUrls())
+        {
+            Popup.Add("An error occurred while trying to fetch global assets", Severity.Warning);
+        }
+    }
+
+    private async Task Connect() 
+    {
+        if (Events.IsConnected)
+        {
+            Popup.Add("Already connected to the EventSub", Severity.Info);
+            return;    
+        }
+
+        if (string.IsNullOrEmpty(Settings.CurrentSettings.ClientId))
+        {
+            Popup.Add("Please perform login before connecting", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            State.IsPageLoading = true;
+            await Events.StartListening();
+            Popup.Add("Connected successfully to the EventSub", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Popup.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            State.IsPageLoading = false;
+        }
+    }
+
+    private async Task Disconnect()
+    {
+        await Events.StopListening();
+        Popup.Add("Disconnected from the EventSub", Severity.Info);
+    }
+
+    private async Task AddChat(string id, string username)
+    {
+        try
+        {
+            await Api.Subscribe(SubscriptionType.Channel.ChatMessage, "1", Events.CurrentSession, Settings.CurrentSettings.UserId, id);
+            _chats.Add((id, username));
+            StateHasChanged();
+        }
+        catch
+        {
+            Popup.Add("An error occurred while trying to subscribe to the chat");
+        }
+    }
+
+    private async void RefreshScreen()
+    {
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { }
+    }
+
+    private async void RefreshData()
+    {
+        try
+        {
+            _userId = Settings.CurrentSettings.UserId;
+            _userLogin = Settings.CurrentSettings.Login;
+
+            if (!string.IsNullOrEmpty(Settings.CurrentSettings.OauthToken) &&
+                !await Asset.UpdateGlobalAssetsUrls())
+            {
+                Popup.Add("An error occurred while trying to fetch global assets", Severity.Warning);
+            }
+        }
+        catch { }
+    }
+
+    private async Task ShowStreamSettings()
+    {
+        if (!Events.IsConnected)
+        {
+            Popup.Add("No active session found, please connect and retry", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            State.IsPageLoading = true;
+
+            var info = await Api.GetChannelInformation(Settings.CurrentSettings.UserId);
+            var currentCategory = await Api.GetCategory(info.GameId);
+
+            var dgOpts = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+            var dgParams = new DialogParameters<StreamSettingsDialog> 
+            { 
+                { x => x.Info, info },
+                { x => x.CurrentCategory, currentCategory }
+            };
+
+            State.IsPageLoading = false;
+            await Dialog.ShowAsync<StreamSettingsDialog>("Edit Stream Information", dgParams, dgOpts);
+        }
+        catch (Exception ex)
+        {
+            Popup.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            State.IsPageLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        State.OnDarkModeChanged -= RefreshScreen;
+        Settings.OnSettingsUpdated -= RefreshData;
+
+        await Events.StopListening();
+    }
+}
+
+
+<style>
+    .new-chat {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 30rem;
+        color: @SomeColor;
+        border: 6px dashed @SomeColor;
+        border-radius: 20px;
+        cursor: pointer;
+        transition: all 0.5s;
+    }
+
+    .new-chat:hover {
+        color: @SomeOtherColor;
+        border-color: @SomeOtherColor;
+    }
+</style>

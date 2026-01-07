@@ -1,0 +1,83 @@
+﻿@implements IDisposable
+
+@inject IJSRuntime Js
+@inject EventSubService Events
+
+
+<MudPaper id="@_id" Style="overflow-y:auto;" Height="@Height" Elevation="1">
+    @if (_notifs.Count == 0)
+    {
+        <MudText Align="Align.Center" Class="mt-5 p-3">Here you'll find your channel's recent activity</MudText>
+    }
+    else
+    {
+        <MudList T="ITwitchNotification" Dense>
+            @foreach (var evt in _notifs)
+            {
+                <MudListItem Dense="true" Class="mb-1 p-1" Style="cursor:default; user-select:unset">
+                    @{
+                        var (ts, msg) = ParseNotification(evt);
+
+                        <span style="font-weight:bold; cursor:text;">@ts.ToString("HH:mm")</span>
+                        <span style="font-style:italic; cursor:text;">@msg</span>
+                    }
+                </MudListItem>
+            }
+        </MudList>
+    }
+</MudPaper>
+
+
+    @code {
+    [Parameter, EditorRequired] public string BroadcasterId { get; set; } = null!;
+    [Parameter, EditorRequired] public string BroadcasterUsername { get; set; } = null!;
+    [Parameter] public string Height { get; set; } = "";
+
+    private Guid _id = Guid.NewGuid();
+
+    private CompositeDisposable _eventHandlers = [];
+    private List<ITwitchNotification> _notifs = [];
+
+
+    protected override void OnInitialized()
+    {
+        _eventHandlers.Add(Events.OnNotificationReceived<ChannelChatFollow>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnNotificationReceived<ChannelCheer>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnNotificationReceived<ChannelRaid>(AddMessage, x => x.ToBroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnNotificationReceived<ChannelBan>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnNotificationReceived<ChannelSubscribe>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnNotificationReceived<ChannelSubscriptionGift>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnNotificationReceived<ChannelSubscriptionMessage>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnNotificationReceived<ChannelPointsCustomRewardAdd>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+    }
+
+    private async void AddMessage(ITwitchNotification message)
+    {
+        _notifs.Add(message);
+        await InvokeAsync(StateHasChanged);
+        await Js.InvokeVoidAsyncIgnoreErrors("scrollToBottom", _id);
+    }
+
+    private static (DateTime timestamp, string Message) ParseNotification(ITwitchNotification notif) => notif switch
+    {
+        ChannelChatFollow msg => (msg.FollowedAt, $"{msg.UserName} followed you!"),
+        ChannelCheer msg => (DateTime.Now, $"{(msg.IsAnonymous ? msg.UserName : "An anonymous user")} cheered {msg.Bits} bits!"),
+        ChannelRaid msg => (DateTime.Now, $"{msg.FromBroadcasterUserName} is raiding with {msg.Viewers} viewers!"),
+
+        ChannelBan msg when (msg.IsPermanent) => (msg.BannedAt, $"{msg.UserName} was banned by {msg.ModeratorUserName}"),
+        ChannelBan msg => (msg.BannedAt, $"{msg.UserName} was timed out by {msg.ModeratorUserName} until {msg.EndsAt:yyyy/MM/dd HH:mm}"),
+
+        ChannelSubscribe msg => (DateTime.Now, $"{msg.UserName} subscribed with a tier {msg.Tier.TrimEnd('0')}!"),
+        ChannelSubscriptionGift msg => (DateTime.Now, $"{msg.UserName} gifted {msg.Total} tier {msg.Tier.TrimEnd('0')} subscriptions! {(msg.CumulativeTotal is int total ? $"They have gifted a total of {total} subscriptions to the channel!" : "")}"),
+        ChannelSubscriptionMessage msg => (DateTime.Now, $"{msg.UserName} resubscribed{(msg.StreakMonths is int months ? $" for {months} months" : "")}!"),
+
+        ChannelPointsCustomRewardAdd { Reward: { } rew } msg => (msg.RedeemedAt, $"{msg.UserName} reedemed {rew.Title}"),
+
+        _ => (default, "")
+    };
+
+    public void Dispose()
+    {
+        _eventHandlers.Dispose();
+    }
+}

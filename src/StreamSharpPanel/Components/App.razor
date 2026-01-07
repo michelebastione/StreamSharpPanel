@@ -1,0 +1,42 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" /> 
+
+    <ResourcePreloader />
+    <link rel="stylesheet" href="@Assets[$"{AppDomain.CurrentDomain.FriendlyName}.styles.css"]" />
+    <link rel="stylesheet" href="@Assets["_content/MudBlazor/MudBlazor.min.css"]" />
+    <link rel="stylesheet" href="@Assets["/css/fonts/Inter/Inter.css"]" />
+    <link rel="stylesheet" href="@Assets["/css/animate.min.css"]" />
+
+    @* It gives some problems with MudBlazor's dark mode *@
+    @* <link rel="stylesheet" href="@Assets["/css/bootstrap.min.css"]" /> *@
+
+    <ImportMap />
+    <HeadOutlet @rendermode="@(new InteractiveServerRenderMode(false))" />
+</head>
+
+<body>
+    <Routes @rendermode="@(new InteractiveServerRenderMode(false))" />
+    <ReconnectModal />
+
+    <script src="@Assets["_framework/blazor.web.js"]" autostart="false"></script>
+    <script src=@Assets["_content/MudBlazor/MudBlazor.min.js"]></script>
+    <script src=@Assets["js/dashboard.js"]></script>
+
+    <script>
+        Blazor.start({
+          circuit: {
+            reconnectionOptions: {             
+              retryIntervalMilliseconds: Array.prototype.at.bind(
+                  [500, 2000, 2000, 2000, 5000, 5000, 5000, 10000, 10000, 10000, 15000, 15000, 15000, 30000, 30000, 30000, 60000]),
+            },
+          },
+        });
+    </script>
+</body>
+
+</html>

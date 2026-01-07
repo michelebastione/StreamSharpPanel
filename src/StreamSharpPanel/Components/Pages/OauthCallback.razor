@@ -1,0 +1,110 @@
+﻿@using Microsoft.AspNetCore.WebUtilities
+@using Microsoft.AspNetCore.Components.Server
+@using StreamSharpPanel.Models.Configuration
+
+@inject IJSRuntime Js
+@inject ISnackbar Popup
+@inject ProtectedSessionStorage Storage
+@inject SettingsService Settings
+@inject AuthService Auth
+
+@layout SimpleLayout
+@page "/oauth/callback"
+
+<PageTitle>Signing In...</PageTitle>
+
+
+<MudContainer Style="margin-top:3rem" MaxWidth="MaxWidth.Small">
+    <MudCard Class="d-flex flex-column" Elevation="3" Style="padding:1.5rem; align-items:center;">
+        @if (_shouldValidateToken)
+        {
+            <MudProgressCircular Color="Color.Primary" StrokeWidth="5" Indeterminate />
+            <MudText Typo="Typo.h4" Class="mt-3 mb-2">Signing you in</MudText>
+            <MudText>Please wait while your credentials are being validated…</MudText>
+        }
+        else if (_tokenValidated)
+        {
+            <MudIcon Color="Color.Success" Icon="@Icons.Material.Filled.Verified" />
+            <MudText Typo="Typo.h4" Class="mt-3 mb-2">The verification was successful</MudText>
+            <MudText>You can close this tab now</MudText>
+        }
+        else
+        {
+            <MudIcon Color="Color.Error" Icon="@Icons.Material.Filled.Error" />
+            <MudText Typo="Typo.h4" Class="mt-3 mb-2">The verification failed</MudText>
+            <MudText>Please close this tab and retry</MudText>
+        }
+    </MudCard>
+</MudContainer>
+
+
+@code {
+    bool _shouldValidateToken = true;
+    bool _tokenValidated;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var canRequestToken = await Storage.GetAsync<bool>("canRequestToken");
+        if (!canRequestToken.Value)
+        {
+            _shouldValidateToken = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || !_shouldValidateToken)
+            return;
+
+        try
+        {
+            if (await Js.InvokeAsyncWithErrorHandling<string>("eval", ["location.hash"]) is not (true, var value))
+            {
+                // todo: add explicit error from url
+                Popup.Add("No token to validate was found. Please try again.", Severity.Error);
+                return;
+            }
+
+            var fragment = QueryHelpers.ParseQuery(value.TrimStart('#'));
+            if (!fragment.TryGetValue("access_token", out var token))
+            {
+                Popup.Add("An error occurred during token validation. Please try again.", Severity.Error);
+                return;
+            }
+
+            var tokenValue = token.FirstOrDefault() ?? "";
+            var validation = await Auth.ValidateToken(tokenValue);
+
+            if (validation is (true, _, { } result))
+            {
+                // var settings = Settings.CurrentSettings with { OauthToken = tokenValue };
+                var settings = new TwitchSettings 
+                {
+                    Login = result.Login,
+                    UserId = result.UserId,
+                    ClientId = result.ClientId,
+                    OauthToken = tokenValue 
+                };
+
+                await Settings.SaveSettings(settings);
+                _tokenValidated = true;
+
+                Popup.Add($"Token requested successfuly. Expiration: {result.ExpirationTimestamp:yyyy-MM-dd HH:mm}", Severity.Success);
+            }
+            else
+            {
+                Popup.Add(validation.Message!, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            // todo: send error message in the url?
+            Popup.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _shouldValidateToken = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}

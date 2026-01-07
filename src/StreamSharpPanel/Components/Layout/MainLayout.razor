@@ -1,0 +1,143 @@
+﻿@inherits LayoutComponentBase
+
+@implements IDisposable
+
+@inject ISnackbar Popup
+@inject IDialogService Dialog
+@inject ILogger<MainLayout> Log
+@inject SettingsService Settings
+@inject AuthService Auth
+@inject StateService State
+
+
+<MudDialogProvider />
+<MudPopoverProvider />
+<MudSnackbarProvider />
+<MudThemeProvider @ref="@_themeProvider" Theme="General.MainTheme" @bind-IsDarkMode="@State.IsDarkMode" />
+
+<MudLayout>
+    <MudOverlay Visible="@State.IsPageLoading" LightBackground LockScroll ZIndex="1350">
+        <MudProgressCircular Indeterminate />
+    </MudOverlay>
+
+    <MudAppBar Elevation="1">
+        <MudImage Src="img/streaming.png" Height="36" />
+        <MudText Typo="Typo.h5" Class="ml-3" Style="text-decoration:underline">StreamSharp Panel</MudText>
+
+        <MudSpacer />
+        <MudIconButton Icon="@DarkLightModeButtonIcon" Color="Color.Inherit" OnClick="@DarkModeToggle" />
+        <MudIconButton Icon="@Icons.Material.Filled.Settings" Color="Color.Inherit" OnClick="@ShowAccountSettings" />
+    </MudAppBar>
+
+    <MudMainContent>
+        <div class="pa-3">
+            <ErrorBoundary>
+                <ChildContent>
+                    @Body
+                </ChildContent>
+
+                <ErrorContent>
+                    <MudText Typo="Typo.h5" Color="Color.Error">An error occurred</MudText>
+                    <MudText>@context.Message</MudText>
+                    <br />
+
+                    <MudText>Please try <MudLink Href="/home">refreshing</MudLink> the page.</MudText>
+                </ErrorContent>
+            </ErrorBoundary>
+        </div>
+    </MudMainContent>
+</MudLayout>
+
+
+@code {
+    private MudThemeProvider _themeProvider = null!;
+
+    private bool _drawerOpen = true;
+    private PeriodicTimer _validationTimer = new(TimeSpan.FromMinutes(30));
+
+    public string DarkLightModeButtonIcon => State.IsDarkMode
+        ? Icons.Material.Rounded.LightMode
+        : Icons.Material.Outlined.DarkMode;
+
+
+    protected override void OnInitialized()
+    {
+        State.OnPageLoadingChanged += Refresh;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _ = ValidationTokenTask();
+
+            State.IsDarkMode = await _themeProvider.GetSystemDarkModeAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task ValidationTokenTask()
+    {
+        do
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(Settings.CurrentSettings.OauthToken) &&
+                    await Auth.ValidateToken(Settings.CurrentSettings.OauthToken) is (false, var msg, _))
+                {
+                    Popup.Add("The token validation failed, please try requesting a new one", Severity.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.LogInformation(ex, "An error occurred during the token validation background task: ");
+            }
+        }
+        while (await _validationTimer.WaitForNextTickAsync());
+    }
+
+    private async void Refresh()
+    {
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void DarkModeToggle()
+    {
+        State.IsDarkMode = !State.IsDarkMode;
+    }
+
+    private async Task ShowAccountSettings()
+    {
+        try
+        {
+            var dg = await Dialog.ShowAsync<AccountSettingsDialog>("Account Settings");
+            var result = await dg.Result;
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Error while showing/editing the settings: ");
+            Popup.Add("An unexpected error occurred, please refresh the page");
+        }
+    }
+
+    private async Task ShowStreamSettings()
+    {
+        try
+        {
+            var dg = await Dialog.ShowAsync<StreamSettingsDialog>("Channel Settings");
+            var result = await dg.Result;
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Error while showing/editing the settings: ");
+            Popup.Add("An unexpected error occurred, please refresh the page");
+        }
+    }
+
+    public void Dispose()
+    {
+        State.OnPageLoadingChanged -= Refresh;
+        _validationTimer.Dispose();
+    }
+}
+

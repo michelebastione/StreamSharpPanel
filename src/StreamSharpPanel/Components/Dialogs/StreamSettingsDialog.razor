@@ -1,0 +1,248 @@
+﻿@using StreamSharpPanel.Services
+@using StreamSharpPanel.Models.Configuration
+@using StreamSharpPanel.Models.Http
+
+@inject ISnackbar Popup
+@inject SettingsService Settings
+@inject ApiCallerService Api
+
+
+<MudDialog>
+	<DialogContent>
+		<MudStack>
+			<MudTextField @bind-Value="@Info.Title" 
+							Label="Title" MaxLength="140" 
+							AutoGrow Immediate 
+							Variant="Variant.Outlined" Margin="Margin.Dense" />
+
+			<MudStack Row>
+				<MudSelect T="string"
+							@bind-Value="@Info.BroadcasterLanguage"
+							Label="Language" ToStringFunc="@GetLanguageDescription"
+							Variant="Variant.Outlined" Margin="Margin.Dense"
+							AdornmentIcon="@Icons.Material.Filled.Language"
+							Adornment="Adornment.End" Dense Immediate>
+
+					@foreach (var lang in TwitchLanguages.All)
+					{
+						<MudSelectItem @key="@lang" Value="@lang.Key" />
+					}
+				</MudSelect>
+
+				<MudAutocomplete T="TwitchCategory"
+									@ref="@_autocomplete"
+									@bind-Value="@CurrentCategory"
+									@bind-Text="@_categorySearchText"
+									Label="Category"
+									DebounceInterval="700" 
+									SearchFunc="@SearchCategories" 
+									Margin="Margin.Dense" Variant="Variant.Outlined"
+									ToStringFunc="@(x => x?.Name)"
+									MinCharacters="3" Adornment="Adornment.End"
+									AdornmentIcon="@Icons.Material.Filled.VideogameAsset"
+									OnKeyDown="@SearchCategoryKeyDown"
+									OnBlur="@SearchCategoryBlur"
+									Dense Immediate Required>
+						 			
+					<ItemTemplate>
+						<MudStack Row>
+							<MudImage Src="@context.BoxArtUrl" Alt="@context.Name" />
+							<MudText>@context.Name</MudText>
+						</MudStack>
+					</ItemTemplate>
+
+					<ItemSelectedTemplate>
+						<MudStack Row>
+							<MudImage Src="@string.Format(context.BoxArtUrl, 52, 72)" Alt="@context.Name" />
+							<MudText>@context.Name</MudText>
+						</MudStack>
+					</ItemSelectedTemplate>
+
+					<ProgressIndicatorInPopoverTemplate>
+						<MudList T="string" ReadOnly>
+							<MudListItem>
+								<MudStack Row>
+									<MudProgressCircular Indeterminate />
+									<MudText>Loading...</MudText>
+								</MudStack>
+							</MudListItem>
+						</MudList>
+					</ProgressIndicatorInPopoverTemplate>
+
+					<NoItemsTemplate>
+						@if (!string.IsNullOrEmpty(_categorySearchText))
+						{
+							<MudList T="string" ReadOnly>
+								<MudListItem>
+									<MudText Align="Align.Center" Class="fst-italic">No categories found</MudText>						
+								</MudListItem>
+							</MudList>
+						}
+					</NoItemsTemplate>
+				</MudAutocomplete>
+			</MudStack>
+		</MudStack>
+
+		<MudStack Row Class="mt-2" AlignItems="AlignItems.Center">
+			<MudTextField @bind-Value="@_currentTag" @ref="@_tagsInput"
+						  Label="Add Tag" MaxLength="25"
+						  Variant="Variant.Outlined" Margin="Margin.Dense"
+						  Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Add"
+						  OnKeyDown="@AddTagKeyDown"
+						  OnAdornmentClick="@AddCurrentTag" Immediate />
+
+			<MudChipSet T="string" AllClosable Color="Color.Primary" Style="max-width:50%">
+				@foreach(var tag in Info.Tags)
+				{
+					<MudChip @key="@tag" T="string" Value="@tag" OnClose="@(x => Info.Tags.Remove(x.Value!))" />
+				}
+			</MudChipSet>
+		</MudStack>
+
+		<MudStack Row AlignItems="AlignItems.Center" Class="mt-2">
+			<MudSelect T="string" 
+					   Label="Content Classification Labels"
+					   SelectedValues="@_selectedLabels.Select(x => x.Id)"
+					   SelectedValuesChanged="@ContentLabelsChanged"
+					   Variant="Variant.Outlined" Margin="Margin.Dense"
+					   InputClass="content-labels-input"
+					   MultiSelection Dense Immediate>
+
+				@foreach (var label in Info.ContentClassificationLabels.Select(x => x.Id))
+				{
+					<MudSelectItem @key="@label" Value="@label" />
+				}
+			</MudSelect>
+
+			<MudCheckBox @bind-Value="@Info.IsBrandedContent" 
+						 Label="Contains promotional contents" 
+						 Color="Color.Primary" UncheckedColor="Color.Surface" Dense />
+		</MudStack>
+	</DialogContent>
+
+	<DialogActions>
+		<MudButton Color="Color.Error" OnClick="@Dialog.Cancel">Cancel</MudButton>
+		<MudButton Color="Color.Primary" OnClick="@Save">Save</MudButton>
+	</DialogActions>
+</MudDialog>
+
+
+@code {
+	[CascadingParameter] public IMudDialogInstance Dialog { get; init; } = null!;
+	[Parameter, EditorRequired] public StreamInfo Info { get; init; } = null!;
+	[Parameter, EditorRequired] public TwitchCategory CurrentCategory { get; set; } = null!;
+
+	private MudAutocomplete<TwitchCategory> _autocomplete = null!;
+	private MudTextField<string> _tagsInput = null!;
+
+	private string _currentTag = "";
+	private string _categorySearchText = "";
+	private List<ContentClassificationLabel> _selectedLabels = [];
+
+
+	protected override async Task OnInitializedAsync()
+	{
+		_categorySearchText = CurrentCategory.Name;
+		_selectedLabels = [.. Info.ContentClassificationLabels.Where(x => x.IsEnabled)];
+	}
+
+	private string GetLanguageDescription(string? code) =>
+		string.IsNullOrEmpty(code) ? ""
+		: TwitchLanguages.All.TryGetValue(code, out var value) ? value : "Other";
+
+	private async Task<IEnumerable<TwitchCategory>> SearchCategories(string query, CancellationToken canc)
+	{
+		if (!string.IsNullOrEmpty(query))
+		{
+			var result = await Api.SearchCategory(query.Trim());
+			return result.Data;
+		}
+
+		return [];
+	}
+
+	private void AddCurrentTag()
+	{
+		if (string.IsNullOrWhiteSpace(_currentTag) || Info is null)
+			return;
+
+		if (Info.Tags.Count >= 10)
+		{
+			Popup.Add("You cannot choose more than 10 tags", Severity.Warning);
+			return;
+		}
+
+		if (Info.Tags.Contains(_currentTag, StringComparer.CurrentCultureIgnoreCase))
+		{
+			Popup.Add("The tag is already present", Severity.Warning);
+		}
+		else
+		{
+			Info.Tags.Add(_currentTag);
+			_currentTag = "";
+
+			InvokeAsync(StateHasChanged);
+		}
+	}
+
+	private async void AddTagKeyDown(KeyboardEventArgs e)
+	{
+		if (e.Key == "Enter")
+		{
+			await _tagsInput.BlurAsync();
+			AddCurrentTag();
+		}
+	}
+
+	private async Task SearchCategoryKeyDown(KeyboardEventArgs e)
+	{
+		if (e.Key == "Escape")
+		{
+			await _autocomplete.BlurAsync();
+		}
+	}
+
+	private async Task SearchCategoryBlur()
+	{
+		await _autocomplete.CloseMenuAsync();
+		_categorySearchText = CurrentCategory.Name;
+		await InvokeAsync(StateHasChanged);
+	}
+
+	private void ContentLabelsChanged(IEnumerable<string> labels)
+	{
+		if (Info is null)
+			return;
+
+		foreach (var label in Info.ContentClassificationLabels)
+		{
+			label.IsEnabled = labels.Contains(label.Id);
+		}
+
+		_selectedLabels = [..Info.ContentClassificationLabels.Where(x => x.IsEnabled)];
+	}
+
+	private async Task Save()
+	{
+		Info!.GameId = CurrentCategory.Id;
+
+		if (await Api.SetChannelInformation(Settings.CurrentSettings.UserId, Info) is (false, var msg))
+		{
+			Popup.Add(msg ?? "An error occurred during stream info update", Severity.Error);
+			return;
+		}
+		else
+		{
+			Popup.Add("Stream info updated successfully", Severity.Success);
+		}
+
+		Dialog.Close();
+	}
+}
+
+
+<style>
+	.content-labels-input {
+		font-size: .85rem;
+	}
+</style>

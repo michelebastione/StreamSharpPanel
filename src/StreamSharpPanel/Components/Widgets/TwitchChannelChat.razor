@@ -1,0 +1,386 @@
+﻿@implements IDisposable
+
+@inject IJSRuntime Js
+@inject ISnackbar Popup
+@inject EventSubService Events
+@inject ApiCallerService Api
+@inject AssetService Asset
+
+
+<MudPaper Class="pa-2" Style="overflow-y:auto;" Height="@Height" Elevation="1">
+    <MudStack Spacing="2" Style="height:100%" StretchItems="StretchItems.Start">
+        <div id="@_chatId" style="height:100%; overflow-y:auto;">
+            <MudChat ArrowPosition="ChatArrowPosition.None" Dense Style="column-gap:unset">
+                @foreach (var msg in _messages)
+                {
+                    <MudChatBubble @key="@msg.MessageId" OnContextClick="@(e => RightClickMessage(e, msg))" Style="width:100%; user-select:unset;">
+                        @if (msg.IsDeleted)
+                        {
+                            @if (msg.ShowDeleted)
+                            {
+                                <span style="cursor:text">@msg.ChatterUserName wrote: @msg.Message.Text</span>
+                            }
+                            else
+                            {
+                                <span style="cursor:text">This message has been deleted by a moderator</span>
+                            }
+                        }
+                        else
+                        {
+                            if (GetChatterBadgesUrls(msg) is { Length: > 0 } urls)
+                            {
+                                <span>
+                                    @foreach (var url in urls)
+                                    {
+                                        if (!string.IsNullOrEmpty(url))
+                                        {
+                                            <MudImage Src="@url" Style="vertical-align:middle" Class="mr-1" />
+                                        }
+                                    }
+                                </span>
+                            }
+
+                            <span style="color:@GetChatterColor(msg); font-weight:bold;">
+                                @msg.ChatterUserName
+                            </span>
+
+                            <span>: </span>
+
+                            foreach (var fragment in msg.Message.Fragments)
+                            {
+                                switch (fragment.FragmentType)
+                                {
+                                    case MessageFragmentType.Emote when fragment.Emote is { EmoteSetId: var setId, Id: var id }:
+                                        if (setId == "0")
+                                        {
+                                            <MudImage Src="@Asset.GlobalEmoticons.Urls[id]" Alt="@fragment.Text" Style="vertical-align:middle" />
+                                        }
+                                        else
+                                        {
+                                            <MudImage Src="@Asset.ChannelEmoticons[setId].Urls[id]" Alt="@fragment.Text" />
+                                        }
+                                        break;
+
+                                    case MessageFragmentType.Cheermote when fragment.Cheermote is { }:
+                                        // todo: to implement
+                                        <span style="cursor:text">@fragment.Text</span>
+                                        break;
+
+                                    case MessageFragmentType.Mention when fragment.Mention is { UserName: var user and not "", UserId: var id }:
+                                        @if (id == BroadcasterId)
+                                        {
+                                            <span style="cursor:default">
+                                                <mark class="px-1">@user</mark>
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span style="font-weight:bold; cursor:default;">@@@user</span>
+                                        }
+                                        break;
+
+                                    default:
+                                        <span style="cursor:text">@fragment.Text</span>
+                                        break;
+                                }
+                            }
+                        }
+                    </MudChatBubble>
+                }
+            </MudChat>
+        </div>
+
+        <MudStack Row Spacing="1" AlignItems="AlignItems.Center" StretchItems="StretchItems.End">
+            <MudTooltip ShowOnHover Text="@(_autoScrollEnabled ? "Pause Autoscroll" : "Resume Autoscroll")">
+                <MudIconButton OnClick="@(() => _autoScrollEnabled = !_autoScrollEnabled)"
+                               Icon="@(_autoScrollEnabled? Icons.Material.Outlined.Pause : Icons.Material.Outlined.PlayArrow)"
+                               Variant="Variant.Outlined" DropShadow="false"
+                               Class="mb-1" Style="height:40px; width:40px; border-color:var(--mud-palette-lines-inputs)" />
+            </MudTooltip>
+
+            <MudTextField @ref="@_chatField"
+                          T="string" @bind-Value="@_chatMessage"
+                          Placeholder="Send a message"
+                          MaxLines="5" MaxLength="500"
+                          AutoGrow Immediate Class="mt-2 mb-3"
+                          Margin="Margin.Dense" Variant="Variant.Outlined"
+                          ReadOnly="@_isChatReadonly" OnKeyDown="@ChatKeyDown"
+                          Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.InsertEmoticon"
+                          OnAdornmentClick="@(() => Popup.Add("Emotes coming soon!"))" />
+        </MudStack>
+
+        <MudButton OnClick="@SendMessage"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   DropShadow="false"
+                   Disabled="@_sendBtnDisabled"
+                   Style="border-radius:9000px; height:2.5rem; font-weight:600">
+            Chat
+        </MudButton>
+    </MudStack>
+</MudPaper>
+
+<MudMenu @ref="@_contextMenu" Open="@_contextMenuOpen" OpenChanged="@(open => { _autoScrollEnabled = !open; _contextMenuOpen = open; })" Dense PositionAtCursor>
+    <MudMenuItem Icon="@Icons.Material.Filled.Info" IconColor="Color.Info" AutoClose>
+        View Details for <span style="color:@GetChatterColor(_selectedMessage)">@_selectedMessage?.ChatterUserName</span>
+    </MudMenuItem>
+
+    <MudMenuItem Icon="@Icons.Material.Filled.Delete" IconColor="Color.Surface" AutoClose>
+        Delete Message
+    </MudMenuItem>
+
+    @if (_selectedMessage?.ChatterUserId is { } userId && userId != BroadcasterId)
+    {
+        <MudMenu>
+            <ActivatorContent>
+                <span class="d-flex" style="margin-left:-36px; align-items:center;">
+                    <MudIcon Icon="@Icons.Material.Filled.Timer" Color="Color.Warning" />
+                    <span class="ml-3" style="width:100%;">
+                        Timeout <span style="color:@GetChatterColor(_selectedMessage)">@_selectedMessage?.ChatterUserName</span>
+                    </span>
+                    <MudIcon Icon="@Icons.Material.Filled.ArrowRight" />
+                </span>
+            </ActivatorContent>
+
+            <ChildContent>
+                <MudMenuItem Label="5 minutes" OnClick="@(() => TimeoutUser(userId, 5))" AutoClose />
+                <MudMenuItem Label="10 minutes" OnClick="@(() => TimeoutUser(userId, 10))" AutoClose />
+                <MudMenuItem Label="30 minutes" OnClick="@(() => TimeoutUser(userId, 30))" AutoClose />
+                <MudMenuItem Label="1 hour" OnClick="@(() => TimeoutUser(userId, 60))" AutoClose />
+                <MudMenuItem Label="2 hours" OnClick="@(() => TimeoutUser(userId, 120))" AutoClose />
+                <MudMenuItem Label="1 day" OnClick="@(() => TimeoutUser(userId, 1440))" AutoClose />
+                <MudMenuItem Label="2 days" OnClick="@(() => TimeoutUser(userId, 2880))" AutoClose />
+            </ChildContent>
+        </MudMenu>
+
+        <MudMenuItem Icon="@Icons.Material.Filled.Block" IconColor="Color.Error" AutoClose OnClick="@(() => BanUser(userId))">
+            Ban <span style="color:@GetChatterColor(_selectedMessage)">@_selectedMessage?.ChatterUserName</span>
+        </MudMenuItem>
+    }
+</MudMenu>
+
+
+@code {
+    [Parameter, EditorRequired] public string BroadcasterId { get; set; } = null!;
+    [Parameter, EditorRequired] public string BroadcasterUsername { get; set; } = null!;
+    [Parameter] public string Height { get; set; } = "";
+
+    private static readonly string[] DefaultChatterColors =
+    [
+        "Blue", "BlueViolet", "CadetBlue", "Chocolate", "Coral",
+        "DodgerBlue", "Firebrick", "GoldenRod", "Green", "HotPink",
+        "OrangeRed", "Red", "SeaGreen", "SpringGreen", "YellowGreen"
+    ];
+
+    private static Dictionary<string, string> ChatterColors = [];
+    private static Dictionary<string, Dictionary<string, string?>> Badges = [];
+
+    Guid _chatId = Guid.NewGuid();
+    private MudMenu _contextMenu = null!;
+    private MudTextField<string> _chatField = null!;
+
+    private CompositeDisposable _eventHandlers = [];
+
+    private string? _chatMessage;
+    private bool _isChatReadonly;
+    private bool _sendBtnDisabled;
+    private bool _autoScrollEnabled = true;
+    private bool _contextMenuOpen;
+
+    private ChannelChatMessage? _selectedMessage;
+    private List<ChannelChatMessage> _messages = [];
+
+
+    protected override void OnInitialized()
+    {
+        _eventHandlers.Add(Events.OnNotificationReceived<ChannelChatMessage>(AddMessage, msg => msg.BroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Asset.OnAssetsUpdated<BadgesUpdated>(UpdateBadges));
+
+        UpdateBadges();
+    }
+
+    private async void AddMessage(ChannelChatMessage message)
+    {
+        foreach (var fragment in message.Message.Fragments)
+        {
+            if (fragment is { FragmentType: MessageFragmentType.Emote, Emote: { EmoteSetId: var setId, Id: var id } })
+            {
+                if (setId != "0" && !Asset.ChannelEmoticons.ContainsKey(setId))
+                {
+                    // todo: handle failure case
+                    await Asset.UpdateChannelEmotesUrls(setId);
+                }
+            }
+        }
+
+        _messages.Add(message);
+        await InvokeAsync(StateHasChanged);
+
+        if (_autoScrollEnabled)
+        {
+            await Js.InvokeVoidAsyncIgnoreErrors("scrollToBottom", _chatId);
+        }
+    }
+
+    private async Task RightClickMessage(MouseEventArgs e, ChannelChatMessage message)
+    {
+        if (!message.IsDeleted)
+        {
+            _selectedMessage = message;
+            await _contextMenu.OpenMenuAsync(e);
+        }
+    }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(_chatMessage))
+            return;
+
+        if (!Events.IsConnected)
+        {
+            Popup.Add("No active session found, please connect and retry.", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(Events.UserId))
+        {
+            Popup.Add("An error occurred while trying to send the message, please retry.", Severity.Error);
+            return;
+        }
+
+        _isChatReadonly = true;
+        _sendBtnDisabled = true;
+
+        try
+        {
+            await Api.SendMessage(BroadcasterId, Events.UserId, _chatMessage, CancellationToken.None);
+            _chatMessage = string.Empty;
+        }
+        catch
+        {
+            Popup.Add("An error occurred while sending the message, please retry");
+        }
+        finally
+        {
+            _isChatReadonly = false;
+            _sendBtnDisabled = false;
+
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task ChatKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await _chatField.BlurAsync();
+
+            if (string.IsNullOrWhiteSpace(_chatMessage))
+            {
+                _chatMessage = "";
+                return;
+            }
+
+            await SendMessage();
+        }
+    }
+
+    // todo: should we add a lock here?
+    private string GetChatterColor(ChannelChatMessage? msg)
+    {
+        if (msg is null)
+            return "";
+
+        if (string.IsNullOrEmpty(msg.Color))
+        {
+            if (ChatterColors.TryGetValue(msg.ChatterUserId, out var color))
+                return color;
+
+            var index = Random.Shared.Next(0, DefaultChatterColors.Length);
+            color = DefaultChatterColors[index];
+
+            ChatterColors[msg.ChatterUserId] = color;
+            return color;
+        }
+
+        return msg.Color;
+    }
+
+    // todo: is it overkill to add a lock here?
+    private void UpdateBadges(BadgesUpdated? e = null)
+    {
+        Badges.Clear();
+        foreach (var set in Asset.GlobalBadges.Data)
+        {
+            Dictionary<string, string?> versions = [];
+            foreach (var badge in set.Versions)
+            {
+                versions[badge.Id] = badge.Url1x;
+            }
+
+            Badges[set.SetId] = versions;
+        }
+    }
+
+    private async Task TimeoutUser(string userId, int minutes)
+    {
+        var banResult = await Api.BanUser(BroadcasterId, BroadcasterId, userId, TimeSpan.FromMinutes(minutes));
+        if (banResult.Success)
+        {
+            _messages.ForEach(msg =>
+            {
+                if (msg.ChatterUserId == userId)
+                {
+                    msg.IsDeleted = true;
+                }
+            });
+
+            await InvokeAsync(StateHasChanged);
+        }
+        else
+        {
+            Popup.Add($"An error occurred: {banResult.Message}", Severity.Error);
+        }
+    }
+
+    private async Task BanUser(string userId)
+    {
+        var banResult = await Api.BanUser(BroadcasterId, BroadcasterId, userId);
+        if (banResult.Success)
+        {
+            _messages.ForEach(msg =>
+            {
+                if (msg.ChatterUserId == userId)
+                {
+                    msg.IsDeleted = true;
+                }
+            });
+
+            await InvokeAsync(StateHasChanged);
+        }
+        else
+        {
+            Popup.Add($"An error occurred: {banResult.Message}", Severity.Error);
+        }
+    }
+
+    private string?[] GetChatterBadgesUrls(ChannelChatMessage? msg)
+    {
+        var urls = msg?.Badges.Select(GetBadgeUrl);
+        return urls?.ToArray() ?? [];
+
+        // todo: log when not found
+        static string? GetBadgeUrl(Badge badge)
+        {
+            var badgeSet = Badges.TryGetValue(badge.SetId, out var set) ? set : [];
+            var badgeUrl = badgeSet.TryGetValue(badge.Id, out var url) ? url : null;
+
+            return badgeUrl;
+        }
+    }
+
+    public void Dispose()
+    {
+        _eventHandlers.Dispose();
+    }
+}

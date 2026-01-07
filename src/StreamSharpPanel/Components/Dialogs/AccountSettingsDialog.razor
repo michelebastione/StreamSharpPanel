@@ -1,0 +1,108 @@
+﻿@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using StreamSharpPanel.Models.Configuration
+
+@implements IDisposable
+
+@inject IJSRuntime Js
+@inject ISnackbar Popup
+@inject ILogger<AccountSettingsDialog> Log
+@inject ProtectedSessionStorage Storage
+@inject SettingsService Settings
+@inject EventSubService Events
+@inject AuthService Auth
+
+
+<MudDialog>
+    <DialogContent>
+		<MudTextField T="string" 
+					  Value="@_settings.ClientId" 
+					  ValueChanged="@(v => _settings.ClientId = v.Trim())"
+					  Label="Client ID" 
+					  Margin="Margin.Dense" 
+					  Variant="Variant.Outlined" 
+					  Required Immediate ReadOnly />
+		
+		<MudStack Row Class="mt-2">
+			<MudTextField Value="@_settings.Login" Label="User Login" Margin="Margin.Dense" Variant="Variant.Outlined" Disabled="@string.IsNullOrEmpty(_settings.Login)" ReadOnly="@(!string.IsNullOrEmpty(_settings.Login))" />
+			<MudTextField Value="@_settings.UserId" Label="User ID" Margin="Margin.Dense" Variant="Variant.Outlined" Disabled="@string.IsNullOrEmpty(_settings.UserId)" ReadOnly="@(!string.IsNullOrEmpty(_settings.UserId))" />
+		</MudStack>
+
+        <MudStack Row Class="w-100 mt-3" Justify="Justify.Center">
+			<MudButton OnClick="@Login" Variant="Variant.Filled" Color="Color.Primary" Disabled="@string.IsNullOrEmpty(_settings.ClientId)">Login / Get new token</MudButton>
+            <MudButton OnClick="@ValidateToken" Variant="Variant.Filled" Color="Color.Primary" Disabled="@string.IsNullOrEmpty(_settings.OauthToken)">Validate token</MudButton>
+        </MudStack>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton Color="Color.Primary" OnClick="@Dialog.Cancel">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+
+@code {
+	[CascadingParameter] public IMudDialogInstance Dialog { get; init; } = null!;
+
+	private TwitchSettings _settings = new();
+
+
+	protected override void OnInitialized()
+	{
+		_settings = Settings.CurrentSettings with { };
+		Settings.OnSettingsUpdated += Refresh;
+	}
+
+	private async Task Login()
+	{
+		try
+		{
+			if (string.IsNullOrWhiteSpace(_settings.ClientId))
+				return;
+
+			if (Events.IsConnected)
+			{
+				Popup.Add("It's not possible to update the settings while connected to the EventSub", Severity.Warning);
+				return;
+			}
+
+			await Storage.SetAsync("canRequestToken", true);
+			var authUrl = Auth.BuildTokenRequestUrl(_settings.ClientId);
+			await Js.InvokeVoidAsync("openInNewTab", authUrl);
+		}
+		catch(Exception ex)
+		{
+			Log.LogError(ex, "Error during the request of the token: ");
+			Popup.Add("An error occured during the request of the token, please retry.");
+		}
+	}
+
+	private async void Refresh()
+	{
+		try
+		{
+			_settings = Settings.CurrentSettings with { };
+			await InvokeAsync(StateHasChanged);
+		}
+		catch { }
+	}
+
+	private async Task ValidateToken()
+	{
+		if (!string.IsNullOrEmpty(_settings.OauthToken))
+		{
+			var validation = await Auth.ValidateToken(_settings.OauthToken);
+			if (validation is (true, _, { } result))
+			{
+				Popup.Add($"The token is valid and will expire on {result.ExpirationTimestamp:yyyy-MM-dd HH:mm}", Severity.Success);
+			}
+			else
+			{
+				Popup.Add(validation.Message!, Severity.Error);
+			}
+		}
+	}
+
+	public void Dispose()
+	{
+		Settings.OnSettingsUpdated -= Refresh;
+	}
+}

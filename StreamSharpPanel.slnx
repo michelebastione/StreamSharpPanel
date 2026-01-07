@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/TwitchDashboardExpress.UI/TwitchDashboardExpress.UI.csproj" />
+  <Project Path="src/StreamSharpPanel/StreamSharpPanel.csproj" />
+</Solution>
