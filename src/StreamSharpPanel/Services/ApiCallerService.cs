@@ -113,6 +113,14 @@ public class ApiCallerService(ILogger<ApiCallerService> logger, IHttpClientFacto
         return await client.GetFromJsonAsync<BadgeSetCollection>("chat/badges/global", JsonOptions);
     }
 
+    internal async Task<CheermoteCollection?> GetCheermotes(string? broadcasterId = null)
+    {
+        using var client = http.CreateTwitchClient();
+        client.BaseAddress = TwitchUris.ApiUri;
+
+        return await client.GetFromJsonAsync<CheermoteCollection>($"bits/cheermotes?broadcaster_id={broadcasterId}", JsonOptions);
+    }
+
     internal async Task<BadgeSetCollection?> GetChannelBadgeSet(string broadcasterId)
     {
         using var client = http.CreateTwitchClient();
@@ -143,7 +151,7 @@ public class ApiCallerService(ILogger<ApiCallerService> logger, IHttpClientFacto
         return await client.GetByteArrayAsync($"{badgeId}/{size}");
     }
 
-    internal async Task SendMessage(string broadcasterId, string userId, string message, CancellationToken cancellationToken)
+    internal async Task SendChatMessage(string broadcasterId, string userId, string message, CancellationToken cancellationToken)
     {
         var body = new
         {
@@ -154,6 +162,14 @@ public class ApiCallerService(ILogger<ApiCallerService> logger, IHttpClientFacto
 
         using var client = http.CreateTwitchClient();
         await client.PostAsJsonAsync("chat/messages", body, JsonOptions, cancellationToken);
+    }
+
+
+    // todo: add purge case when messageId is null
+    internal async Task DeleteChatMessage(string broadcasterId, string moderatorId, string messageId, CancellationToken cancellationToken = default)
+    {
+        using var client = http.CreateTwitchClient();
+        await client.DeleteAsync($"moderation/chat?broadcaster_id={broadcasterId}&moderator_id={moderatorId}&message_id={messageId}", cancellationToken);
     }
 
     internal async Task<(bool Success, string? Message)> BanUser(string broadcasterId, string moderatorId, string userId, TimeSpan? duration = null, string? reason = null, CancellationToken cancellationToken = default)
@@ -194,5 +210,12 @@ public class ApiCallerService(ILogger<ApiCallerService> logger, IHttpClientFacto
     {
         using var client = http.CreateTwitchClient();
         await client.DeleteAsync($"moderation/bans?broadcaster_id={broadcasterId}&moderator_id={moderatorId}&user_id={userId}", cancellationToken);
+    }
+
+    internal async Task ResolveUnbanRequest(string broadcasterId, string moderatorId, string unbanRequestId, bool approved, string? reason = null, CancellationToken cancellationToken = default)
+    {
+        using var client = http.CreateTwitchClient();
+        var status = approved ? "approved" : "denied";
+        await client.PatchAsync($"moderation/unban_requests?broadcaster_id={broadcasterId}&moderator_id={moderatorId}&unban_request_id={unbanRequestId}&status={status}", null, cancellationToken);
     }
 }

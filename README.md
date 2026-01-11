@@ -20,10 +20,9 @@ You are advised to do this if you are forking the project.
 
 ## Currently not available / Coming soon
 - Manage Announcements and Automod
-- Rendering Cheermotes and Channel Badges
-- Emote panel and rendering emotes in the message to send 
+- Rendering Channel Cheermotes and Channel Badges
+- Emote panel and rendering emotes in the message input field
 - Making Clips and Raids
-- Reviewing and approving unban requests
 - Viewing chatters' informations
 - More channel events handling
 - Refactoring

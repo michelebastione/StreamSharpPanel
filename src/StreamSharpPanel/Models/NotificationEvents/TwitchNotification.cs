@@ -1,8 +1,11 @@
 namespace StreamSharpPanel.Models.NotificationEvents;
 
-public interface ITwitchNotification;
+public abstract class TwitchNotification
+{
+    public virtual string Format() => "";
+}
 
-public class UnhandledNotification : ITwitchNotification;
+public class UnhandledNotification : TwitchNotification;
 
 public class MessageNotification
 {

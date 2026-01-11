@@ -1,6 +1,8 @@
-﻿namespace StreamSharpPanel.Models.NotificationEvents;
+﻿using System.Text;
 
-public class ChannelSubscriptionMessage : ITwitchNotification
+namespace StreamSharpPanel.Models.NotificationEvents;
+
+public class ChannelSubscriptionMessage : TwitchNotification
 {
     public string UserId { get; init; } = null!;
     public string UserLogin { get; init; } = null!;
@@ -22,6 +24,25 @@ public class ChannelSubscriptionMessage : ITwitchNotification
     public int CumulativeMonths { get; init; }
     public int? StreakMonths { get; init; }
     public int DurationMonths { get; init; }
+
+    public override string Format()
+    {
+        var sb = new StringBuilder();
+        sb.AppendFormat("{0} resubscribed", UserName);
+        
+        if (StreakMonths is int months)
+        {
+            sb.Append(months);
+        }
+        
+        sb.Append('!');
+        if (Message?.Text is { } msg)
+        {
+            sb.AppendFormat(" They say: \"{0}\"", msg);
+        }
+
+        return sb.ToString();
+    }
 }
 
 public class SubscriptionMessage

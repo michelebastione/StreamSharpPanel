@@ -1,6 +1,6 @@
 namespace StreamSharpPanel.Models.NotificationEvents;
 
-public class ChannelChatMessage : ITwitchNotification
+public class ChannelChatMessage : TwitchNotification
 {
     public string ChatterUserId { get; init; } = null!;
     public string ChatterUserLogin { get; init; } = null!;

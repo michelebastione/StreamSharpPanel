@@ -1,6 +1,6 @@
 ﻿namespace StreamSharpPanel.Models.NotificationEvents;
 
-public class ChannelBan : ITwitchNotification
+public class ChannelBan : TwitchNotification
 {
     public string UserId { get; init; } = null!;
     public string UserLogin { get; init; } = null!;
@@ -16,8 +16,8 @@ public class ChannelBan : ITwitchNotification
     
     public string? Reason { get; init; }
     
-    public DateTime BannedAt { get; init; }
-    public DateTime? EndsAt { get; init; }
+    public DateTimeOffset BannedAt { get; init; }
+    public DateTimeOffset? EndsAt { get; init; }
     
     public bool IsPermanent { get; init; }
 }

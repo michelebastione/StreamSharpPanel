@@ -1,6 +1,6 @@
-namespace StreamSharpPanel.Models.NotificationEvents;
+﻿namespace StreamSharpPanel.Models.NotificationEvents;
 
-public class ChannelChatFollow : TwitchNotification
+public class ChannelUnban : TwitchNotification
 {
     public string UserId { get; init; } = null!;
     public string UserLogin { get; init; } = null!;
@@ -9,6 +9,8 @@ public class ChannelChatFollow : TwitchNotification
     public string BroadcasterUserId { get; init; } = null!;
     public string BroadcasterUserLogin { get; init; } = null!;
     public string BroadcasterUserName { get; init; } = null!;
-
-    public DateTimeOffset FollowedAt { get; init;}
+    
+    public string ModeratorUserId { get; init; } = null!;
+    public string ModeratorUserLogin { get; init; } = null!;
+    public string ModeratorUserName { get; init; } = null!;
 }

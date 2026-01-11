@@ -105,12 +105,12 @@
 					   SelectedValues="@_selectedLabels.Select(x => x.Id)"
 					   SelectedValuesChanged="@ContentLabelsChanged"
 					   Variant="Variant.Outlined" Margin="Margin.Dense"
-					   InputClass="content-labels-input"
-					   MultiSelection Dense Immediate>
+					   ToStringFunc="@(x => Info.ContentClassificationLabels.FirstOrDefault(c => c.Id == x)?.ToString())"
+					   InputClass="content-labels-input" MultiSelection Dense Immediate>
 
-				@foreach (var label in Info.ContentClassificationLabels.Select(x => x.Id))
+				@foreach (var label in Info.ContentClassificationLabels)
 				{
-					<MudSelectItem @key="@label" Value="@label" />
+					<MudSelectItem @key="@label.Id" Value="@label.Id">@label.ToString()</MudSelectItem>
 				}
 			</MudSelect>
 

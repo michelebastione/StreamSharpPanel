@@ -1,6 +1,6 @@
 namespace StreamSharpPanel.Models.NotificationEvents;
 
-public class ChannelCheer : ITwitchNotification
+public class ChannelCheer : TwitchNotification
 {
     public bool IsAnonymous { get; init; }
 

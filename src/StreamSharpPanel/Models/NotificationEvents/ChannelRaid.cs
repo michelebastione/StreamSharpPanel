@@ -1,6 +1,6 @@
 namespace StreamSharpPanel.Models.NotificationEvents;
 
-public class ChannelRaid : ITwitchNotification
+public class ChannelRaid : TwitchNotification
 {
     public string FromBroadcasterUserId { get; init; } = null!;
     public string FromBroadcasterUserLogin { get; init; } = null!;

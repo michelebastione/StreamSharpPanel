@@ -1,6 +1,4 @@
-﻿using System.Text.Json.Serialization;
-
-namespace StreamSharpPanel.Models.Configuration;
+﻿namespace StreamSharpPanel.Models.Configuration;
 
 
 public class StreamSettingsDto

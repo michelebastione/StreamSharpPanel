@@ -1,6 +1,6 @@
 ﻿namespace StreamSharpPanel.Models.NotificationEvents;
 
-public class ChannelSubscriptionGift : ITwitchNotification
+public class ChannelSubscriptionGift : TwitchNotification
 {
     public string UserId { get; init; } = null!;
     public string UserLogin { get; init; } = null!;
@@ -20,5 +20,15 @@ public class ChannelSubscriptionGift : ITwitchNotification
 
     public int? CumulativeTotal { get; init; }
     public bool IsAnonymous { get; init; }
+
+    public override string Format()
+    {
+        var msg = $"{UserName} gifted {Total} tier {Tier.TrimEnd('0')} subscriptions!";
+        if (CumulativeTotal is int total)
+        {
+            msg += $"They have gifted a total of {total} subscriptions to the channel!";
+        }
+        return msg;
+    }
 }
 

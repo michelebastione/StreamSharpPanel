@@ -16,14 +16,17 @@
                     <MudChatBubble @key="@msg.MessageId" OnContextClick="@(e => RightClickMessage(e, msg))" Style="width:100%; user-select:unset;">
                         @if (msg.IsDeleted)
                         {
-                            @if (msg.ShowDeleted)
-                            {
-                                <span style="cursor:text">@msg.ChatterUserName wrote: @msg.Message.Text</span>
-                            }
-                            else
-                            {
-                                <span style="cursor:text">This message has been deleted by a moderator</span>
-                            }
+                            <span style="cursor:text">
+                                @(msg.ChatterUserName)'s message was deleted by a moderator:
+                                @if (msg.ShowDeleted)
+                                {
+                                    @msg.Message.Text
+                                }
+                                else
+                                {
+                                    <MudLink OnClick="@(() => msg.ShowDeleted = true)">&lt;Click to view&gt</MudLink>                                    
+                                }
+                            </span>
                         }
                         else
                         {
@@ -57,13 +60,20 @@
                                         }
                                         else
                                         {
-                                            <MudImage Src="@Asset.ChannelEmoticons[setId].Urls[id]" Alt="@fragment.Text" />
+                                            <MudImage Src="@Asset.ChannelEmoticons[setId].Urls[id]" Alt="@fragment.Text" Style="vertical-align:middle" />
                                         }
                                         break;
 
-                                    case MessageFragmentType.Cheermote when fragment.Cheermote is { }:
-                                        // todo: to implement
-                                        <span style="cursor:text">@fragment.Text</span>
+                                    case MessageFragmentType.Cheermote when fragment.Cheermote is { } cheer:
+                                        var image = Asset.GlobalCheermotes.Data
+                                            .FirstOrDefault(x => x.Prefix == cheer.Prefix)
+                                            ?.Tiers.FirstOrDefault(x => x.Id == cheer.Tier.ToString())
+                                            ?.Images.Light;
+
+                                        var src = image?.Animated.TryGetValue("1", out var anim) is true ? anim : "";
+                                        var srcFall = image?.Animated.TryGetValue("1", out var @static) is true ? @static : "";
+
+                                        <MudImage Src="@src" FallbackSrc="@srcFall" Alt="@fragment.Text" Style="vertical-align:middle" />
                                         break;
 
                                     case MessageFragmentType.Mention when fragment.Mention is { UserName: var user and not "", UserId: var id }:
@@ -125,12 +135,12 @@
         View Details for <span style="color:@GetChatterColor(_selectedMessage)">@_selectedMessage?.ChatterUserName</span>
     </MudMenuItem>
 
-    <MudMenuItem Icon="@Icons.Material.Filled.Delete" IconColor="Color.Surface" AutoClose>
-        Delete Message
-    </MudMenuItem>
-
     @if (_selectedMessage?.ChatterUserId is { } userId && userId != BroadcasterId)
     {
+        <MudMenuItem OnClick="@DeleteMessage" Icon="@Icons.Material.Filled.Delete" IconColor="Color.Surface" AutoClose>
+            Delete Message
+        </MudMenuItem>
+
         <MudMenu>
             <ActivatorContent>
                 <span class="d-flex" style="margin-left:-36px; align-items:center;">
@@ -143,13 +153,13 @@
             </ActivatorContent>
 
             <ChildContent>
-                <MudMenuItem Label="5 minutes" OnClick="@(() => TimeoutUser(userId, 5))" AutoClose />
-                <MudMenuItem Label="10 minutes" OnClick="@(() => TimeoutUser(userId, 10))" AutoClose />
-                <MudMenuItem Label="30 minutes" OnClick="@(() => TimeoutUser(userId, 30))" AutoClose />
-                <MudMenuItem Label="1 hour" OnClick="@(() => TimeoutUser(userId, 60))" AutoClose />
-                <MudMenuItem Label="2 hours" OnClick="@(() => TimeoutUser(userId, 120))" AutoClose />
-                <MudMenuItem Label="1 day" OnClick="@(() => TimeoutUser(userId, 1440))" AutoClose />
-                <MudMenuItem Label="2 days" OnClick="@(() => TimeoutUser(userId, 2880))" AutoClose />
+                <MudMenuItem Label="5 minutes" OnClick="@(() => BanUser(userId, TimeSpan.FromMinutes(5)))" AutoClose />
+                <MudMenuItem Label="10 minutes" OnClick="@(() => BanUser(userId, TimeSpan.FromMinutes(10)))" AutoClose />
+                <MudMenuItem Label="30 minutes" OnClick="@(() => BanUser(userId, TimeSpan.FromMinutes(30)))" AutoClose />
+                <MudMenuItem Label="1 hour" OnClick="@(() => BanUser(userId, TimeSpan.FromHours(1)))" AutoClose />
+                <MudMenuItem Label="2 hours" OnClick="@(() => BanUser(userId, TimeSpan.FromHours(2)))" AutoClose />
+                <MudMenuItem Label="1 day" OnClick="@(() => BanUser(userId, TimeSpan.FromDays(1)))" AutoClose />
+                <MudMenuItem Label="2 days" OnClick="@(() => BanUser(userId, TimeSpan.FromDays(2)))" AutoClose />
             </ChildContent>
         </MudMenu>
 
@@ -160,7 +170,7 @@
 </MudMenu>
 
 
-@code {
+    @code {
     [Parameter, EditorRequired] public string BroadcasterId { get; set; } = null!;
     [Parameter, EditorRequired] public string BroadcasterUsername { get; set; } = null!;
     [Parameter] public string Height { get; set; } = "";
@@ -193,7 +203,7 @@
 
     protected override void OnInitialized()
     {
-        _eventHandlers.Add(Events.OnNotificationReceived<ChannelChatMessage>(AddMessage, msg => msg.BroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnEventReceived<ChannelChatMessage>(AddMessage, msg => msg.BroadcasterUserId == BroadcasterId));
         _eventHandlers.Add(Asset.OnAssetsUpdated<BadgesUpdated>(UpdateBadges));
 
         UpdateBadges();
@@ -253,7 +263,7 @@
 
         try
         {
-            await Api.SendMessage(BroadcasterId, Events.UserId, _chatMessage, CancellationToken.None);
+            await Api.SendChatMessage(BroadcasterId, Events.UserId, _chatMessage, CancellationToken.None);
             _chatMessage = string.Empty;
         }
         catch
@@ -322,30 +332,22 @@
         }
     }
 
-    private async Task TimeoutUser(string userId, int minutes)
+    private async Task DeleteMessage()
     {
-        var banResult = await Api.BanUser(BroadcasterId, BroadcasterId, userId, TimeSpan.FromMinutes(minutes));
-        if (banResult.Success)
+        try
         {
-            _messages.ForEach(msg =>
-            {
-                if (msg.ChatterUserId == userId)
-                {
-                    msg.IsDeleted = true;
-                }
-            });
-
-            await InvokeAsync(StateHasChanged);
+            await Api.DeleteChatMessage(BroadcasterId, BroadcasterId, _selectedMessage!.MessageId.ToString());
+            _selectedMessage.IsDeleted = true;
         }
-        else
+        catch (Exception ex)
         {
-            Popup.Add($"An error occurred: {banResult.Message}", Severity.Error);
+            Popup.Add($"An error occurred while deleting the message: {ex.Message}", Severity.Error);
         }
     }
 
-    private async Task BanUser(string userId)
+    private async Task BanUser(string userId, TimeSpan? timeout = null)
     {
-        var banResult = await Api.BanUser(BroadcasterId, BroadcasterId, userId);
+        var banResult = await Api.BanUser(BroadcasterId, BroadcasterId, userId, timeout);
         if (banResult.Success)
         {
             _messages.ForEach(msg =>

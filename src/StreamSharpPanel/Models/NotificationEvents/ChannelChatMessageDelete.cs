@@ -1,6 +1,6 @@
 namespace StreamSharpPanel.Models.NotificationEvents;
 
-public class ChannelChatMessageDelete : ITwitchNotification
+public class ChannelChatMessageDelete : TwitchNotification
 {
     public string BroadcasterUserId { get; init; } = null!;
     public string BroadcasterUserName { get; init; } = null!;

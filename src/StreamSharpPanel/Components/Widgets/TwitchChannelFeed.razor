@@ -1,7 +1,9 @@
 ﻿@implements IDisposable
 
 @inject IJSRuntime Js
+@inject ISnackbar Popup
 @inject EventSubService Events
+@inject ApiCallerService Api
 
 
 <MudPaper id="@_id" Style="overflow-y:auto;" Height="@Height" Elevation="1">
@@ -11,10 +13,10 @@
     }
     else
     {
-        <MudList T="ITwitchNotification" Dense>
+        <MudList T="TwitchNotification" Dense>
             @foreach (var evt in _notifs)
             {
-                <MudListItem Dense="true" Class="mb-1 p-1" Style="cursor:default; user-select:unset">
+                <MudListItem @key="@evt" Dense="true" Class="mb-1 p-1" Style="cursor:default; user-select:unset" @oncontextmenu="@(x => OpenMenu(x, evt))">
                     @{
                         var (ts, msg) = ParseNotification(evt);
 
@@ -27,54 +29,125 @@
     }
 </MudPaper>
 
+<MudMenu @ref="@_contextMenu" Open="@_contextMenuOpen" OpenChanged="@(open => _contextMenuOpen = open)" Dense PositionAtCursor>
+    @if (_selectedNotif is ChannelBan ban)
+    {
+        // todo: if possible find a clean way to not show the prompt when the user has already been unbanned, but it's not a big deal
+        <MudMenuItem Icon="@Icons.Material.Filled.Gavel" IconColor="Color.Info" AutoClose OnClick="@(() => Unban(ban.UserId))">
+            @(ban.IsPermanent ? "Unban" : "End Timeout") @ban.UserName
+        </MudMenuItem>
+    }
+    else if (_selectedNotif is ChannelUnbanRequestCreate { Resolved: false } unban)
+    {
+        <MudMenuItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success" AutoClose OnClick="@(() => ResolveUnbanRequest(unban, true))">
+            Approve @(unban.UserName)'s unban request
+        </MudMenuItem>
+        <MudMenuItem Icon="@Icons.Material.Filled.Close" IconColor="Color.Error" AutoClose OnClick="@(() => ResolveUnbanRequest(unban, false))">
+            Deny @(unban.UserName)'s unban request
+        </MudMenuItem>
+    }
+</MudMenu>
 
-    @code {
+
+@code {
     [Parameter, EditorRequired] public string BroadcasterId { get; set; } = null!;
     [Parameter, EditorRequired] public string BroadcasterUsername { get; set; } = null!;
     [Parameter] public string Height { get; set; } = "";
 
-    private Guid _id = Guid.NewGuid();
+    private MudMenu _contextMenu = null!;
+    private bool _contextMenuOpen;
 
+    private Guid _id = Guid.NewGuid();
+    
     private CompositeDisposable _eventHandlers = [];
-    private List<ITwitchNotification> _notifs = [];
+    private List<TwitchNotification> _notifs = [];
+
+    private TwitchNotification? _selectedNotif;
 
 
     protected override void OnInitialized()
     {
-        _eventHandlers.Add(Events.OnNotificationReceived<ChannelChatFollow>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
-        _eventHandlers.Add(Events.OnNotificationReceived<ChannelCheer>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
-        _eventHandlers.Add(Events.OnNotificationReceived<ChannelRaid>(AddMessage, x => x.ToBroadcasterUserId == BroadcasterId));
-        _eventHandlers.Add(Events.OnNotificationReceived<ChannelBan>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
-        _eventHandlers.Add(Events.OnNotificationReceived<ChannelSubscribe>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
-        _eventHandlers.Add(Events.OnNotificationReceived<ChannelSubscriptionGift>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
-        _eventHandlers.Add(Events.OnNotificationReceived<ChannelSubscriptionMessage>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
-        _eventHandlers.Add(Events.OnNotificationReceived<ChannelPointsCustomRewardAdd>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnEventReceived<ChannelChatFollow>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnEventReceived<ChannelCheer>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnEventReceived<ChannelRaid>(AddMessage, x => x.ToBroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnEventReceived<ChannelBan>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnEventReceived<ChannelUnban>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnEventReceived<ChannelUnbanRequestCreate>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnEventReceived<ChannelUnbanRequestResolve>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnEventReceived<ChannelSubscribe>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnEventReceived<ChannelSubscriptionGift>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnEventReceived<ChannelSubscriptionMessage>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnEventReceived<ChannelPointsCustomRewardAdd>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
     }
 
-    private async void AddMessage(ITwitchNotification message)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Js.InvokeVoidAsync("handlerPreventDefault", _id, "contextmenu");
+        }
+    }
+
+    private async void AddMessage(TwitchNotification message)
     {
         _notifs.Add(message);
         await InvokeAsync(StateHasChanged);
         await Js.InvokeVoidAsyncIgnoreErrors("scrollToBottom", _id);
     }
 
-    private static (DateTime timestamp, string Message) ParseNotification(ITwitchNotification notif) => notif switch
+    private static (DateTime timestamp, string Message) ParseNotification(TwitchNotification notif) => notif switch
     {
-        ChannelChatFollow msg => (msg.FollowedAt, $"{msg.UserName} followed you!"),
-        ChannelCheer msg => (DateTime.Now, $"{(msg.IsAnonymous ? msg.UserName : "An anonymous user")} cheered {msg.Bits} bits!"),
+        ChannelChatFollow msg => (msg.FollowedAt.ToLocalTime().DateTime, $"{msg.UserName} followed you!"),
+        ChannelCheer msg => (DateTime.Now, $"{(!msg.IsAnonymous ? msg.UserName : "An anonymous user")} cheered {msg.Bits} bits!"),
         ChannelRaid msg => (DateTime.Now, $"{msg.FromBroadcasterUserName} is raiding with {msg.Viewers} viewers!"),
 
-        ChannelBan msg when (msg.IsPermanent) => (msg.BannedAt, $"{msg.UserName} was banned by {msg.ModeratorUserName}"),
-        ChannelBan msg => (msg.BannedAt, $"{msg.UserName} was timed out by {msg.ModeratorUserName} until {msg.EndsAt:yyyy/MM/dd HH:mm}"),
+        ChannelBan msg when (msg.IsPermanent) => (msg.BannedAt.ToLocalTime().DateTime, $"{msg.UserName} was banned by {msg.ModeratorUserName}"),
+        ChannelBan msg => (msg.BannedAt.ToLocalTime().DateTime, $"{msg.UserName} was timed out by {msg.ModeratorUserName} until {msg.EndsAt:yyyy/MM/dd HH:mm}"),
+        ChannelUnban msg => (DateTime.Now, $"{msg.UserName} was unbanned by {msg.ModeratorUserName}"),
+        ChannelUnbanRequestCreate msg => (msg.CreatedAt.ToLocalTime().DateTime, $"{msg.UserName} is asking to be unbanned: {msg.Text}"),
 
         ChannelSubscribe msg => (DateTime.Now, $"{msg.UserName} subscribed with a tier {msg.Tier.TrimEnd('0')}!"),
-        ChannelSubscriptionGift msg => (DateTime.Now, $"{msg.UserName} gifted {msg.Total} tier {msg.Tier.TrimEnd('0')} subscriptions! {(msg.CumulativeTotal is int total ? $"They have gifted a total of {total} subscriptions to the channel!" : "")}"),
-        ChannelSubscriptionMessage msg => (DateTime.Now, $"{msg.UserName} resubscribed{(msg.StreakMonths is int months ? $" for {months} months" : "")}!"),
+        ChannelSubscriptionGift msg => (DateTime.Now, msg.Format()),
+        ChannelSubscriptionMessage msg => (DateTime.Now, msg.Format()),
 
         ChannelPointsCustomRewardAdd { Reward: { } rew } msg => (msg.RedeemedAt, $"{msg.UserName} reedemed {rew.Title}"),
 
         _ => (default, "")
     };
+
+    private async void OpenMenu(MouseEventArgs e, TwitchNotification notif)
+    {
+        if (notif is ChannelBan or ChannelUnbanRequestCreate { Resolved: false })
+        {
+            _selectedNotif = notif;
+            await _contextMenu.OpenMenuAsync(e);
+        }
+    }
+
+    private async Task Unban(string userId)
+    {
+        try
+        {
+            await Api.UnbanUser(BroadcasterId, BroadcasterId, userId);
+        }
+        catch (Exception ex)
+        {
+            Popup.Add($"The unbanning failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ResolveUnbanRequest(ChannelUnbanRequestCreate request, bool approve)
+    {
+        try
+        {
+            await Api.ResolveUnbanRequest(BroadcasterId, BroadcasterId, request.Id, approve);
+            request.Resolved = true;
+        }
+        catch (Exception ex)
+        {
+            Popup.Add($"The unban resolution failed: {ex.Message}", Severity.Error);
+        }
+    }
 
     public void Dispose()
     {

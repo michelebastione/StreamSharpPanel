@@ -1,6 +1,6 @@
 ﻿namespace StreamSharpPanel.Models.NotificationEvents;
 
-public class ChannelPointsCustomRewardAdd : ITwitchNotification
+public class ChannelPointsCustomRewardAdd : TwitchNotification
 {
     public string? Id { get; set; }
     public string BroadcasterUserId { get; set; } = null!;

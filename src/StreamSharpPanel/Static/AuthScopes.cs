@@ -34,6 +34,7 @@ internal static class AuthScopes
         internal const string ManageAutomod = "moderator:manage:automod";
         internal const string ManageAnnouncements = "moderator:manage:announcements";
         internal const string ManageBannedUsers = "moderator:manage:banned_users";
+        internal const string ManageUnbanRequests = "moderator:manage:unban_requests";
         internal const string ManageChatMessages = "moderator:manage:chat_messages";
         internal const string ReadChatters = "moderator:read:chatters";
         internal const string ReadFollowers = "moderator:read:followers";

@@ -19,7 +19,6 @@ public sealed class EventSubService(ILogger<EventSubService> logger, ApiCallerSe
     private readonly ILogger<EventSubService> _logger = logger;
     private readonly ApiCallerService _api = api;
 
-    //private Uri _currentConnectionUri = new UriBuilder("ws", "localhost", 8080, "ws").Uri;
     private Uri _currentConnectionUri = TwitchUris.EventSubUri;
     private ClientWebSocket _ws = new();
     private CancellationTokenSource? _cancSource;
@@ -33,7 +32,7 @@ public sealed class EventSubService(ILogger<EventSubService> logger, ApiCallerSe
     private readonly SemaphoreSlim _semaphore = new(1, 1);
 
     private readonly HashSet<string> _readMessages = [];
-    private readonly Subject<ITwitchNotification> _notificationStream = new();
+    private readonly Subject<TwitchNotification> _notificationStream = new();
 
     internal string CurrentSession { get; private set; } = "";
     internal string? UserId { get; private set; }
@@ -193,26 +192,7 @@ public sealed class EventSubService(ILogger<EventSubService> logger, ApiCallerSe
         return true;
     }
 
-    //private static async Task<JsonNode?> ReceiveJsonMessage(ClientWebSocket ws, byte[] buffer, CancellationToken ct)
-    //{
-    //    WebSocketReceiveResult received;
-    //    await using var ms = new MemoryStream();
-
-    //    do
-    //    {
-    //        received = await ws.ReceiveAsync(buffer, ct);
-    //        await ms.WriteAsync(buffer.AsMemory(0, received.Count), ct);
-    //    }
-    //    while (!received.EndOfMessage && !ct.IsCancellationRequested);
-
-    //    await ms.FlushAsync(ct);
-    //    ms.Seek(0, SeekOrigin.Begin);
-
-    //    return await JsonNode.ParseAsync(ms, cancellationToken: ct);
-    //}
-
-    // todo: how do we make sure no messages are dropped?
-    
+    // todo: how do we make sure no messages are dropped?    
     private async Task SwitchConnection(ReconnectPayload reconnect, CancellationToken cancellationToken)
     {
         var newWs = new ClientWebSocket();
@@ -245,14 +225,17 @@ public sealed class EventSubService(ILogger<EventSubService> logger, ApiCallerSe
         }
     }
 
-    internal void MockNotification(ITwitchNotification notification) => _notificationStream.OnNext(notification);
+    internal void MockNotification(TwitchNotification notification) => _notificationStream.OnNext(notification);
 
     private void ProcessNotificationEvent(NotificationPayload payload)
     {
-        ITwitchNotification? notification = payload.Subscription.Type switch
+        TwitchNotification? notification = payload.Subscription.Type switch
         {
             SubscriptionType.Channel.ChatMessage => payload.Event.Deserialize<ChannelChatMessage>(JsonOptions),
             SubscriptionType.Channel.Ban => payload.Event.Deserialize<ChannelBan>(JsonOptions),
+            SubscriptionType.Channel.Unban => payload.Event.Deserialize<ChannelUnban>(JsonOptions),
+            SubscriptionType.Channel.UnbanRequestCreate => payload.Event.Deserialize<ChannelUnbanRequestCreate>(JsonOptions),
+            SubscriptionType.Channel.UnbanRequestResolve => payload.Event.Deserialize<ChannelUnbanRequestResolve>(JsonOptions),
             SubscriptionType.Channel.Cheer => payload.Event.Deserialize<ChannelCheer>(JsonOptions),
             SubscriptionType.Channel.Follow => payload.Event.Deserialize<ChannelChatFollow>(JsonOptions),
             SubscriptionType.Channel.Raid => payload.Event.Deserialize<ChannelRaid>(JsonOptions),
@@ -273,7 +256,7 @@ public sealed class EventSubService(ILogger<EventSubService> logger, ApiCallerSe
         }
     }
 
-    internal IDisposable OnNotificationReceived<T>(Action<T> subCallback, Func<T, bool>? subCondition = null) where T : ITwitchNotification
+    internal IDisposable OnEventReceived<T>(Action<T> subCallback, Func<T, bool>? subCondition = null) where T : TwitchNotification
     {
         return _notificationStream
             .OfType<T>()
@@ -291,6 +274,9 @@ public sealed class EventSubService(ILogger<EventSubService> logger, ApiCallerSe
         await _api.Subscribe(SubscriptionType.Channel.ChatMessage, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
 
         await _api.Subscribe(SubscriptionType.Channel.Ban, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
+        await _api.Subscribe(SubscriptionType.Channel.Unban, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
+        await _api.Subscribe(SubscriptionType.Channel.UnbanRequestCreate, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
+        await _api.Subscribe(SubscriptionType.Channel.UnbanRequestResolve, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
         //await _api.Subscribe(SubscriptionType.Channel.ChatMessageDelete, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
 
         await _api.Subscribe(SubscriptionType.Channel.Follow, "2", CurrentSession, UserId, broadcasterId, cancellationToken: ct);

@@ -1,6 +1,6 @@
 ﻿namespace StreamSharpPanel.Models.NotificationEvents;
 
-public class ChannelSubscribe : ITwitchNotification
+public class ChannelSubscribe : TwitchNotification
 {
     public string UserId { get; init; } = null!;
     public string UserLogin { get; init; } = null!;

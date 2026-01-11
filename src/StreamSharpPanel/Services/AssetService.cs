@@ -10,6 +10,7 @@ public class AssetService(ILogger<AssetService> logger, ApiCallerService api)
 
     public BadgeSetCollection GlobalBadges { get; private set; } = new();
     public GlobalEmoteSet GlobalEmoticons { get; private set; } = new();
+    public CheermoteCollection GlobalCheermotes { get; private set; } = new();
 
     public Dictionary<string, BadgeSetCollection> ChannelBadges { get; private set; } = [];
     public Dictionary<string, ChannelEmoteSet> ChannelEmoticons { get; private set; } = [];
@@ -21,6 +22,7 @@ public class AssetService(ILogger<AssetService> logger, ApiCallerService api)
         {
             GlobalBadges = await api.GetGlobalBadgeSet() ?? new();
             GlobalEmoticons = await api.GetGlobalEmoteSet() ?? new();
+            GlobalCheermotes = await api.GetCheermotes() ?? new();
             _updateStream.OnNext(new BadgesUpdated());
             return true;
         }

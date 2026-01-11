@@ -8,7 +8,9 @@ internal static class TwitchUris
         Host = "id.twitch.tv",
         Port = 443
     }.Uri;
-    
+
+    //internal static readonly Uri EventSubUri = new UriBuilder("ws", "localhost", 8080, "ws").Uri;
+
     internal static readonly Uri EventSubUri = new UriBuilder
     {
         Scheme = "wss",
@@ -17,6 +19,7 @@ internal static class TwitchUris
         Path = "ws"
     }.Uri;
 
+    //internal static readonly Uri ApiUri = new UriBuilder("http", "localhost", 8080).Uri;
     internal static readonly Uri ApiUri = new UriBuilder
     {
         Scheme = "https",
@@ -24,7 +27,7 @@ internal static class TwitchUris
         Port = 443,
         Path = "helix/"
     }.Uri;
-    
+
     internal static readonly Uri EmotesUri = new UriBuilder
     {
         Scheme = "https",

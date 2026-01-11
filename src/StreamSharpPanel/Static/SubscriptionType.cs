@@ -18,6 +18,8 @@ public static class SubscriptionType
         public const string Update = "channel.update"; // v2
         public const string Ban = "channel.ban";
         public const string Unban = "channel.unban";
+        public const string UnbanRequestCreate = "channel.unban_request.create";
+        public const string UnbanRequestResolve = "channel.unban_request.resolve";
 
         public const string Cheer = "channel.cheer";
         public const string Raid = "channel.raid";
