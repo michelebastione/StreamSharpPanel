@@ -260,7 +260,9 @@ public sealed class EventSubService(ILogger<EventSubService> logger, ApiCallerSe
     {
         return _notificationStream
             .OfType<T>()
+#if !DEBUG
             .Where(subCondition ?? (static _ => true))
+#endif
             .Subscribe(subCallback);
     }
 
@@ -272,6 +274,9 @@ public sealed class EventSubService(ILogger<EventSubService> logger, ApiCallerSe
             throw new InvalidOperationException("The user id has not been specified");
 
         await _api.Subscribe(SubscriptionType.Channel.ChatMessage, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
+
+        await _api.Subscribe(SubscriptionType.Automod.MessageHold, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
+        await _api.Subscribe(SubscriptionType.Automod.MessageUpdate, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
 
         await _api.Subscribe(SubscriptionType.Channel.Ban, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
         await _api.Subscribe(SubscriptionType.Channel.Unban, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
@@ -313,7 +318,7 @@ public sealed class EventSubService(ILogger<EventSubService> logger, ApiCallerSe
             if (age.TotalSeconds > _keepAliveTimeoutSeconds + KeepAliveGracePeriodSeconds)
             {
                 if (_logger.IsEnabled(LogLevel.Warning))
-                    _logger.LogWarning("KeepAlive not detected within {Timeout}s (+{Grace}s grace), aborting and reconnecting. lastKeepAlive={Last}", _keepAliveTimeoutSeconds, KeepAliveGracePeriodSeconds, lastTime);
+                    _logger.LogWarning("KeepAlive not detected within {Timeout}s (+{Grace}s grace), aborting and reconnecting. lastKeepAlive={Last}", _keepAliveTimeoutSeconds, KeepAliveGracePeriodSeconds, lastTime.LocalDateTime);
 
                 _currentConnectionUri = TwitchUris.EventSubUri;
                 try
@@ -330,27 +335,6 @@ public sealed class EventSubService(ILogger<EventSubService> logger, ApiCallerSe
                 break;
             }
         }
-
-        //var shouldReconnect = false;
-
-        //using var timer = new PeriodicTimer(TimeSpan.FromSeconds(_keepAliveTimeoutSeconds));
-        //while (await timer.WaitForNextTickAsync(cancellationToken))
-        //{
-        //    if (Interlocked.Exchange(ref _keepAliveState, KeepAliveState.Dead) != KeepAliveState.Alive)
-        //    {
-        //        // Reconnection is needed
-        //        _currentConnectionUri = TwitchUri.TwitchEventSubUri;
-
-        //        _ws.Abort();
-        //        IsConnected = false;
-
-        //        shouldReconnect = true;
-        //        break;
-        //    }
-        //}
-
-        //if (shouldReconnect)
-        //    _ = StartListening();
     }
 
     public async ValueTask DisposeAsync()

@@ -6,7 +6,7 @@ public class ChannelChatMessage : TwitchNotification
     public string ChatterUserLogin { get; init; } = null!;
     public string ChatterUserName { get; init; } = null!;
     public Guid MessageId { get; init; }
-    public MessageNotification Message { get; init; } = null!;
+    public ChatMessage Message { get; init; } = null!;
     public string? Color { get; init; }
 
     public string MessageType { get; init; } = null!;

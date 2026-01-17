@@ -7,13 +7,13 @@ public abstract class TwitchNotification
 
 public class UnhandledNotification : TwitchNotification;
 
-public class MessageNotification
+public class ChatMessage
 {
     public string Text { get; init; } = null!;
-    public MessageFragment[] Fragments { get; init; } = [];
+    public ChatMessageFragment[] Fragments { get; init; } = [];
 }
 
-public class MessageFragment
+public class ChatMessageFragment
 {
     public string Type { get; init; } = null!;
     public MessageFragmentType FragmentType => Type switch

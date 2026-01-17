@@ -218,4 +218,18 @@ public class ApiCallerService(ILogger<ApiCallerService> logger, IHttpClientFacto
         var status = approved ? "approved" : "denied";
         await client.PatchAsync($"moderation/unban_requests?broadcaster_id={broadcasterId}&moderator_id={moderatorId}&unban_request_id={unbanRequestId}&status={status}", null, cancellationToken);
     }
+
+    internal async Task ResolveAutomoddedMessage(string moderatorId, string messageId, bool allow, CancellationToken cancellationToken = default)
+    {
+        using var client = http.CreateTwitchClient();
+        
+        var body = new
+        {
+            UserId = moderatorId,
+            MsgId = messageId,
+            Action = allow
+        };
+
+        await client.PostAsJsonAsync("moderation/automod/message", body, JsonOptions, cancellationToken);
+    }
 }

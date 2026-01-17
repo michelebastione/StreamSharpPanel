@@ -6,13 +6,14 @@ using static StreamSharpPanel.Static.General;
 
 namespace StreamSharpPanel.Services;
 
-public class AuthService(ILogger<AuthService> logger, IHttpClientFactory http)
+public class AuthService(ILogger<AuthService> logger, IHttpClientFactory http, SettingsService settings)
 {
-    private const string OauthRedirect = "http://localhost:3000/oauth/callback";
     private const string AuthorizeUrlPath = "oauth2/authorize";
     private const string ValidateUrlPath = "oauth2/validate";
 
-    private static QueryBuilder CreateAuthQuery(string clientId) => new()
+    private readonly string OauthRedirect = $"http://localhost:{settings.ServerHttpPort}/oauth/callback";
+
+    private QueryBuilder CreateAuthQuery(string clientId) => new()
     {
         { "client_id", clientId },
         { "redirect_uri", OauthRedirect },

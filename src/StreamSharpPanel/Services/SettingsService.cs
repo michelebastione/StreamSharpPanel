@@ -11,6 +11,8 @@ public class SettingsService(IDataProtectionProvider protection, IConfiguration 
 
     private readonly IDataProtector _dataProtector = protection.CreateProtector("settings");
 
+    internal readonly int ServerHttpPort = config.GetValue<int?>("HttpPort") ?? General.DefaultHttpPort;
+
     internal TwitchSettings CurrentSettings { get; private set; } = new();
     internal Action? OnSettingsUpdated { get; set; }
 

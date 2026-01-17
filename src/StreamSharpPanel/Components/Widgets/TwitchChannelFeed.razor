@@ -37,6 +37,7 @@
             @(ban.IsPermanent ? "Unban" : "End Timeout") @ban.UserName
         </MudMenuItem>
     }
+
     else if (_selectedNotif is ChannelUnbanRequestCreate { Resolved: false } unban)
     {
         <MudMenuItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success" AutoClose OnClick="@(() => ResolveUnbanRequest(unban, true))">
@@ -44,6 +45,16 @@
         </MudMenuItem>
         <MudMenuItem Icon="@Icons.Material.Filled.Close" IconColor="Color.Error" AutoClose OnClick="@(() => ResolveUnbanRequest(unban, false))">
             Deny @(unban.UserName)'s unban request
+        </MudMenuItem>
+    }
+
+    else if (_selectedNotif is AutomodMessageHold { Resolved: false } automodded)
+    {
+        <MudMenuItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success" AutoClose OnClick="@(() => ResolveAutomoddedMessage(automodded, true))">
+            Allow @(automodded.UserName)'s message
+        </MudMenuItem>
+        <MudMenuItem Icon="@Icons.Material.Filled.Close" IconColor="Color.Error" AutoClose OnClick="@(() => ResolveAutomoddedMessage(automodded, false))">
+            Reject @(automodded.UserName)'s message
         </MudMenuItem>
     }
 </MudMenu>
@@ -58,7 +69,7 @@
     private bool _contextMenuOpen;
 
     private Guid _id = Guid.NewGuid();
-    
+
     private CompositeDisposable _eventHandlers = [];
     private List<TwitchNotification> _notifs = [];
 
@@ -70,14 +81,20 @@
         _eventHandlers.Add(Events.OnEventReceived<ChannelChatFollow>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
         _eventHandlers.Add(Events.OnEventReceived<ChannelCheer>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
         _eventHandlers.Add(Events.OnEventReceived<ChannelRaid>(AddMessage, x => x.ToBroadcasterUserId == BroadcasterId));
+
         _eventHandlers.Add(Events.OnEventReceived<ChannelBan>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
         _eventHandlers.Add(Events.OnEventReceived<ChannelUnban>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
         _eventHandlers.Add(Events.OnEventReceived<ChannelUnbanRequestCreate>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
         _eventHandlers.Add(Events.OnEventReceived<ChannelUnbanRequestResolve>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+
         _eventHandlers.Add(Events.OnEventReceived<ChannelSubscribe>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
         _eventHandlers.Add(Events.OnEventReceived<ChannelSubscriptionGift>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
         _eventHandlers.Add(Events.OnEventReceived<ChannelSubscriptionMessage>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+
         _eventHandlers.Add(Events.OnEventReceived<ChannelPointsCustomRewardAdd>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+
+        _eventHandlers.Add(Events.OnEventReceived<AutomodMessageHold>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnEventReceived<AutomodMessageUpdate>(AddMessage, x => x.BroadcasterUserId == BroadcasterId));
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -97,14 +114,14 @@
 
     private static (DateTime timestamp, string Message) ParseNotification(TwitchNotification notif) => notif switch
     {
-        ChannelChatFollow msg => (msg.FollowedAt.ToLocalTime().DateTime, $"{msg.UserName} followed you!"),
+        ChannelChatFollow msg => (msg.FollowedAt.LocalDateTime, $"{msg.UserName} followed you!"),
         ChannelCheer msg => (DateTime.Now, $"{(!msg.IsAnonymous ? msg.UserName : "An anonymous user")} cheered {msg.Bits} bits!"),
         ChannelRaid msg => (DateTime.Now, $"{msg.FromBroadcasterUserName} is raiding with {msg.Viewers} viewers!"),
 
-        ChannelBan msg when (msg.IsPermanent) => (msg.BannedAt.ToLocalTime().DateTime, $"{msg.UserName} was banned by {msg.ModeratorUserName}"),
-        ChannelBan msg => (msg.BannedAt.ToLocalTime().DateTime, $"{msg.UserName} was timed out by {msg.ModeratorUserName} until {msg.EndsAt:yyyy/MM/dd HH:mm}"),
+        ChannelBan msg when (msg.IsPermanent) => (msg.BannedAt.LocalDateTime, $"{msg.UserName} was banned by {msg.ModeratorUserName}"),
+        ChannelBan msg => (msg.BannedAt.LocalDateTime, $"{msg.UserName} was timed out by {msg.ModeratorUserName} until {msg.EndsAt:yyyy/MM/dd HH:mm}"),
         ChannelUnban msg => (DateTime.Now, $"{msg.UserName} was unbanned by {msg.ModeratorUserName}"),
-        ChannelUnbanRequestCreate msg => (msg.CreatedAt.ToLocalTime().DateTime, $"{msg.UserName} is asking to be unbanned: {msg.Text}"),
+        ChannelUnbanRequestCreate msg => (msg.CreatedAt.LocalDateTime, $"{msg.UserName} is asking to be unbanned: {msg.Text}"),
 
         ChannelSubscribe msg => (DateTime.Now, $"{msg.UserName} subscribed with a tier {msg.Tier.TrimEnd('0')}!"),
         ChannelSubscriptionGift msg => (DateTime.Now, msg.Format()),
@@ -112,12 +129,19 @@
 
         ChannelPointsCustomRewardAdd { Reward: { } rew } msg => (msg.RedeemedAt, $"{msg.UserName} reedemed {rew.Title}"),
 
+        AutomodMessageHold msg => (msg.HeldAt.LocalDateTime, $"{msg.UserName}'s message was held by AutoMod: \"{msg.Message.Text}\""),
+        AutomodMessageUpdate { MessageStatus: AutomodMessageStatus.Approved } msg => (DateTime.Now, $"{msg.UserName}'s message held by AutoMod has been approved by {msg.ModeratorUserName}"),
+        AutomodMessageUpdate { MessageStatus: AutomodMessageStatus.Denied } msg => (DateTime.Now, $"{msg.UserName}'s message held by AutoMod has been rejected by {msg.ModeratorUserName}"),
+        AutomodMessageUpdate { MessageStatus: AutomodMessageStatus.Expired } msg => (DateTime.Now, $"{msg.UserName}'s message held by AutoMod has expired"),
+
         _ => (default, "")
     };
 
     private async void OpenMenu(MouseEventArgs e, TwitchNotification notif)
     {
-        if (notif is ChannelBan or ChannelUnbanRequestCreate { Resolved: false })
+        if (notif is ChannelBan or
+            ChannelUnbanRequestCreate { Resolved: false } or
+            AutomodMessageHold { Resolved: false })
         {
             _selectedNotif = notif;
             await _contextMenu.OpenMenuAsync(e);
@@ -146,6 +170,19 @@
         catch (Exception ex)
         {
             Popup.Add($"The unban resolution failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ResolveAutomoddedMessage(AutomodMessageHold held, bool approve)
+    {
+        try
+        {
+            await Api.ResolveAutomoddedMessage(BroadcasterId, held.MessageId, approve);
+            held.Resolved = true;
+        }
+        catch (Exception ex)
+        {
+            Popup.Add($"The automod resolution failed: {ex.Message}", Severity.Error);
         }
     }
 

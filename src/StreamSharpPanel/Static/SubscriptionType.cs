@@ -6,8 +6,8 @@ public static class SubscriptionType
 {
     public static class Automod
     {
-        public const string MessageHold = "automod.message.hold";
-        public const string MessageUpdate = "automod.message.update";
+        public const string MessageHold = "automod.message.hold"; // if v2 only triggered by public blocked terms
+        public const string MessageUpdate = "automod.message.update"; // if v2 only triggered by public blocked terms
         public const string SettingsUpdate = "automod.settings.update";
         public const string TermsUpdate = "automod.terms.update";
     }

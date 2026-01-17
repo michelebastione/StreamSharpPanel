@@ -10,7 +10,6 @@ internal static class TwitchUris
     }.Uri;
 
     //internal static readonly Uri EventSubUri = new UriBuilder("ws", "localhost", 8080, "ws").Uri;
-
     internal static readonly Uri EventSubUri = new UriBuilder
     {
         Scheme = "wss",
