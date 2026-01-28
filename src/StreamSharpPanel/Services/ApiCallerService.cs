@@ -10,12 +10,23 @@ namespace StreamSharpPanel.Services;
 
 public class ApiCallerService(ILogger<ApiCallerService> logger, IHttpClientFactory http)
 {
-    internal async Task<string?> GetUserId(string username, CancellationToken cancellationToken)
+    /// <summary>
+    /// Either fill username or id to get user info.
+    /// </summary>
+    internal async Task<GetUserResponse?> GetUsersInfo(IEnumerable<string>? usernames = null, IEnumerable<string>? ids = null, CancellationToken cancellationToken = default)
     {
-        using var client = http.CreateTwitchClient();
-        var resp = await client.GetFromJsonAsync<GetUserResponse>($"users?login={username}", JsonOptions, cancellationToken);
+        usernames ??= [];
+        ids ??= [];
 
-        return resp?.Data.FirstOrDefault()?.Id;
+        var loginQuery = usernames.Select(u => new KeyValuePair<string, string?>("login", u));
+        var idQuery = ids
+            .Where(i => !string.IsNullOrEmpty(i) && i.All(char.IsDigit))
+            .Select(i => new KeyValuePair<string, string?>("id", i));
+
+        var query = QueryHelpers.AddQueryString("users", [..loginQuery, ..idQuery]);
+
+        using var client = http.CreateTwitchClient();
+        return await client.GetFromJsonAsync<GetUserResponse>(query, JsonOptions, cancellationToken);
     }
 
     internal async Task<StreamInfo> GetChannelInformation(string username, CancellationToken cancellationToken = default)
@@ -53,8 +64,23 @@ public class ApiCallerService(ILogger<ApiCallerService> logger, IHttpClientFacto
     internal async Task<TwitchCategorySearchResult> SearchCategory(string category, CancellationToken cancellationToken = default)
     {
         using var client = http.CreateTwitchClient();
-        var query = QueryHelpers.AddQueryString("search/categories", "query", category);
-        return await client.GetFromJsonAsync<TwitchCategorySearchResult>(query, JsonOptions, cancellationToken) ?? new();
+        var url = QueryHelpers.AddQueryString("search/categories", "query", category);
+        return await client.GetFromJsonAsync<TwitchCategorySearchResult>(url, JsonOptions, cancellationToken) ?? new();
+    }
+
+    internal async Task<TwitchChannelSearchResult> SearchChannels(string searchTerm, bool liveOnly = true, CancellationToken cancellationToken = default)
+    {
+        using var client = http.CreateTwitchClient();
+
+        var url = QueryHelpers.AddQueryString("search/channels",
+            [
+                new KeyValuePair<string,string?>("query", searchTerm),
+                new KeyValuePair<string,string?>("live_only", liveOnly.ToString()),
+                //new KeyValuePair<string,string?>("first", num),
+                //new KeyValuePair<string,string?>("after", cursor),
+            ]);
+
+        return await client.GetFromJsonAsync<TwitchChannelSearchResult>(url, JsonOptions, cancellationToken) ?? new();
     }
 
     internal async Task Subscribe(string type, string version, string session, string userId, string broadcasterId, string? moderatorId = null, CancellationToken cancellationToken = default)
@@ -84,48 +110,61 @@ public class ApiCallerService(ILogger<ApiCallerService> logger, IHttpClientFacto
     internal async Task<GlobalEmoteSet?> GetGlobalEmoteSet()
     {
         using var client = http.CreateTwitchClient();
-        client.BaseAddress = TwitchUris.ApiUri;
-
         return await client.GetFromJsonAsync<GlobalEmoteSet>("chat/emotes/global", JsonOptions);
     }
 
     internal async Task<ChannelEmoteSet?> GetEmoteSet(string emoteSet)
     {
         using var client = http.CreateTwitchClient();
-        client.BaseAddress = TwitchUris.ApiUri;
-
         return await client.GetFromJsonAsync<ChannelEmoteSet>($"chat/emotes/set?emote_set_id={emoteSet}", JsonOptions);
     }
 
     internal async Task<ChannelEmoteSet?> GetChannelEmotes(string broadcasterId)
     {
         using var client = http.CreateTwitchClient();
-        client.BaseAddress = TwitchUris.ApiUri;
-
         return await client.GetFromJsonAsync<ChannelEmoteSet>($"chat/emotes?broadcaster_id={broadcasterId}", JsonOptions);
+    }
+
+    internal async Task<UserEmoteSet?> GetUserEmotes(string userId, string? cursor = null, string? followedBroadcasterId = null, CancellationToken cancellationToken = default)
+    {
+        using var client = http.CreateTwitchClient();
+        return await client.GetFromJsonAsync<UserEmoteSet>($"chat/emotes/user?user_id={userId}&after={cursor}", JsonOptions, cancellationToken);
+    }
+
+    internal async Task<List<UserEmoteInfo>> GetAllUserEmotes(string userId, CancellationToken cancellationToken = default)
+    {
+        List<UserEmoteInfo> result = [];
+
+        bool isCursorEmpty = false;
+        string? cursor = null;
+        do
+        {
+            var emotes = await GetUserEmotes(userId, cursor, cancellationToken: cancellationToken);
+
+            result.AddRange(emotes?.Data ?? []);
+            cursor = emotes?.Pagination?.Cursor;
+            isCursorEmpty = string.IsNullOrEmpty(cursor);
+        }
+        while (!isCursorEmpty);
+
+        return result;
     }
 
     internal async Task<BadgeSetCollection?> GetGlobalBadgeSet()
     {
         using var client = http.CreateTwitchClient();
-        client.BaseAddress = TwitchUris.ApiUri;
-
         return await client.GetFromJsonAsync<BadgeSetCollection>("chat/badges/global", JsonOptions);
     }
 
     internal async Task<CheermoteCollection?> GetCheermotes(string? broadcasterId = null)
     {
         using var client = http.CreateTwitchClient();
-        client.BaseAddress = TwitchUris.ApiUri;
-
         return await client.GetFromJsonAsync<CheermoteCollection>($"bits/cheermotes?broadcaster_id={broadcasterId}", JsonOptions);
     }
 
     internal async Task<BadgeSetCollection?> GetChannelBadgeSet(string broadcasterId)
     {
         using var client = http.CreateTwitchClient();
-        client.BaseAddress = TwitchUris.ApiUri;
-
         return await client.GetFromJsonAsync<BadgeSetCollection>($"chat/badges?broadcaster_id={broadcasterId}", JsonOptions);
     }
 
@@ -169,7 +208,12 @@ public class ApiCallerService(ILogger<ApiCallerService> logger, IHttpClientFacto
     internal async Task DeleteChatMessage(string broadcasterId, string moderatorId, string messageId, CancellationToken cancellationToken = default)
     {
         using var client = http.CreateTwitchClient();
-        await client.DeleteAsync($"moderation/chat?broadcaster_id={broadcasterId}&moderator_id={moderatorId}&message_id={messageId}", cancellationToken);
+
+        var query = $"broadcaster_id={broadcasterId}&" +
+            $"moderator_id={moderatorId}&" +
+            $"message_id={messageId}";
+
+        await client.DeleteAsync($"moderation/chat?{query}", cancellationToken);
     }
 
     internal async Task<(bool Success, string? Message)> BanUser(string broadcasterId, string moderatorId, string userId, TimeSpan? duration = null, string? reason = null, CancellationToken cancellationToken = default)
@@ -209,20 +253,31 @@ public class ApiCallerService(ILogger<ApiCallerService> logger, IHttpClientFacto
     internal async Task UnbanUser(string broadcasterId, string moderatorId, string userId, string? reason = null, CancellationToken cancellationToken = default)
     {
         using var client = http.CreateTwitchClient();
-        await client.DeleteAsync($"moderation/bans?broadcaster_id={broadcasterId}&moderator_id={moderatorId}&user_id={userId}", cancellationToken);
+
+        var query = $"broadcaster_id={broadcasterId}&" +
+            $"moderator_id={moderatorId}&" +
+            $"user_id={userId}";
+
+        await client.DeleteAsync($"moderation/bans?{query}", cancellationToken);
     }
 
     internal async Task ResolveUnbanRequest(string broadcasterId, string moderatorId, string unbanRequestId, bool approved, string? reason = null, CancellationToken cancellationToken = default)
     {
         using var client = http.CreateTwitchClient();
+
         var status = approved ? "approved" : "denied";
-        await client.PatchAsync($"moderation/unban_requests?broadcaster_id={broadcasterId}&moderator_id={moderatorId}&unban_request_id={unbanRequestId}&status={status}", null, cancellationToken);
+        var query = $"broadcaster_id={broadcasterId}&" +
+            $"moderator_id={moderatorId}&" +
+            $"unban_request_id={unbanRequestId}&" +
+            $"status={status}";
+
+        await client.PatchAsync($"moderation/unban_requests?{query}", null, cancellationToken);
     }
 
     internal async Task ResolveAutomoddedMessage(string moderatorId, string messageId, bool allow, CancellationToken cancellationToken = default)
     {
         using var client = http.CreateTwitchClient();
-        
+
         var body = new
         {
             UserId = moderatorId,
@@ -231,5 +286,34 @@ public class ApiCallerService(ILogger<ApiCallerService> logger, IHttpClientFacto
         };
 
         await client.PostAsJsonAsync("moderation/automod/message", body, JsonOptions, cancellationToken);
+    }
+
+    internal async Task<(bool Success, string? Msg)> StartRaid(string fromBroadcasterId, string toBroadcasterId, CancellationToken cancellationToken = default)
+    {
+        using var client = http.CreateTwitchClient();
+        var query = $"from_broadcaster_id={fromBroadcasterId}&to_broadcaster_id={toBroadcasterId}";
+
+        var resp = await client.PostAsync($"raids?{query}", null, cancellationToken);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var text = await resp.Content.ReadAsStringAsync(cancellationToken);
+            return (false, text);
+        }
+
+        return (true, null);
+    }
+
+    internal async Task<(bool Success, string? Msg)> CancelRaid(string fromBroadcasterId, CancellationToken cancellationToken = default)
+    {
+        using var client = http.CreateTwitchClient();
+
+        var resp = await client.DeleteAsync($"raids?broadcaster_id={fromBroadcasterId}", cancellationToken);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var text = await resp.Content.ReadAsStringAsync(cancellationToken);
+            return (false, text);
+        }
+
+        return (true, null);
     }
 }

@@ -67,11 +67,15 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender &&
-            !string.IsNullOrEmpty(Settings.CurrentSettings.OauthToken) &&
-            !await Asset.UpdateGlobalAssetsUrls())
+        if (firstRender)
         {
-            Popup.Add("An error occurred while trying to fetch global assets", Severity.Warning);
+            if (!string.IsNullOrEmpty(Settings.CurrentSettings.OauthToken))
+            {
+                if (!await Asset.UpdateGlobalAssetsUrls() || !await Asset.UpdateUserEmotesUrls(_userId))
+                {
+                    Popup.Add("An error occurred while trying to fetch global assets", Severity.Warning);
+                }
+            }
         }
     }
 

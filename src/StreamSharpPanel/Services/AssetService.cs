@@ -1,6 +1,7 @@
 ﻿using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using StreamSharpPanel.Models.ChatterInfo;
+using StreamSharpPanel.Models.Http;
 
 namespace StreamSharpPanel.Services;
 
@@ -14,7 +15,7 @@ public class AssetService(ILogger<AssetService> logger, ApiCallerService api)
 
     public Dictionary<string, BadgeSetCollection> ChannelBadges { get; private set; } = [];
     public Dictionary<string, ChannelEmoteSet> ChannelEmoticons { get; private set; } = [];
-
+    public ILookup<TwitchUser, UserEmoteInfo>? UserEmotes { get; private set; }
 
     public async Task<bool> UpdateGlobalAssetsUrls()
     {
@@ -74,6 +75,45 @@ public class AssetService(ILogger<AssetService> logger, ApiCallerService api)
             }
             
             return false;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "An error occurred while fetching badges of user {User}: ", setId);    
+            return false;
+        }
+    }
+
+    public async Task<bool> UpdateUserEmotesUrls(string setId)
+    {
+        try
+        {
+            var emotes = await api.GetAllUserEmotes(setId);
+
+            var infos = await api.GetUsersInfo(ids: emotes.Select(e => e.OwnerId));
+            var infoDict = infos?.Data.ToDictionary(u => u.Id, u => u) ?? [];
+
+            var globalUser = new TwitchUser
+            {
+                Id = "",
+                Login = "",
+                DisplayName = "Global"
+            };
+
+            var unlockedUser = new TwitchUser
+            {
+                Id = "",
+                Login = "",
+                DisplayName = "Unlocked"
+            };
+
+            UserEmotes = emotes.ToLookup(g => g.OwnerId switch 
+            {
+                "" => globalUser,
+                "twitch" => unlockedUser,
+                _ => infoDict.TryGetValue(g.OwnerId, out var user) ? user : new() { Id = "", Login = "", DisplayName = g.OwnerId }
+            });
+
+            return true;
         }
         catch (Exception ex)
         {

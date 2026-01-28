@@ -24,7 +24,7 @@
                                 }
                                 else
                                 {
-                                    <MudLink OnClick="@(() => msg.ShowDeleted = true)">&lt;Click to view&gt</MudLink>                                    
+                                    <MudLink OnClick="@(() => msg.ShowDeleted = true)">&lt;Click to view&gt</MudLink>
                                 }
                             </span>
                         }
@@ -66,9 +66,9 @@
 
                                     case MessageFragmentType.Cheermote when fragment.Cheermote is { } cheer:
                                         var image = Asset.GlobalCheermotes.Data
-                                            .FirstOrDefault(x => x.Prefix == cheer.Prefix)
-                                            ?.Tiers.FirstOrDefault(x => x.Id == cheer.Tier.ToString())
-                                            ?.Images.Light;
+                                        .FirstOrDefault(x => x.Prefix == cheer.Prefix)
+                                        ?.Tiers.FirstOrDefault(x => x.Id == cheer.Tier.ToString())
+                                        ?.Images.Light;
 
                                         var src = image?.Animated.TryGetValue("1", out var anim) is true ? anim : "";
                                         var srcFall = image?.Animated.TryGetValue("1", out var @static) is true ? @static : "";
@@ -98,14 +98,56 @@
                     </MudChatBubble>
                 }
             </MudChat>
+
+            <MudOverlay @bind-Visible="@_emotePanelOpen" AutoClose />
+            <MudPopover @bind-Open="@_emotePanelOpen" 
+                        OverflowBehavior="OverflowBehavior.FlipAlways" 
+                        RelativeWidth="DropdownWidth.Ignore" 
+                        AnchorOrigin="Origin.BottomCenter" 
+                        TransformOrigin="Origin.BottomCenter"
+                        Style="width:280px">
+
+                <div class="d-flex p-1" style="position:relative; z-index:10; justify-content:end; border-bottom:2px solid #ebebeb; background-color:#27273A">
+                    <MudIconButton OnClick="@(() => _emotePanelOpen = false)" Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Error" DropShadow="false" Ripple="false" />
+                </div>
+                <MudGrid Spacing="1" Class="mt-1 pl-3 py-1 pr-1" Style="height:200px; overflow-y:scroll; overflow-x:hidden">
+                    @if (Asset.UserEmotes is { } emotes)
+                    {
+                        foreach (var group in Asset.UserEmotes.OrderBy(x => x.Key.DisplayName == "Global" ? 1 : 0).ThenBy(x => x.Key.DisplayName))
+                        {
+                            var user = group.Key;
+                            <MudItem xs="12" Class="d-flex align-content-center mb-2" Style="gap:8px">
+                                <MudText Typo="Typo.h6" Class="fw-bold">@user.DisplayName</MudText>
+                                @if (!string.IsNullOrEmpty(user.ProfileImageUrl))
+                                {
+                                    <MudAvatar Elevation="3" Size="Size.Small" Style="width:34px; height:34px;">
+                                        <MudImage Src="@user.ProfileImageUrl" Alt="@user.DisplayName" />
+                                    </MudAvatar>
+                                }
+                            </MudItem>
+
+                            foreach (var em in group)
+                            {
+                                <MudItem xs="3" @key="@em.Id">
+                                    <MudButton OnClick="@(() => { if (!string.IsNullOrEmpty(_chatMessage)) _chatMessage += " "; _chatMessage += $"{em.Name} "; })" DropShadow="false" Class="pa-0">
+                                        <MudImage Src="@em.AnimatedUrl" FallbackSrc="@em.StaticUrl" Alt="@em.Name" Style="vertical-align:middle;" />
+                                    </MudButton>
+                                </MudItem>
+                            }
+
+                            <MudDivider Light Class="mt-4 mb-2" />
+                        }
+                    }
+                </MudGrid>
+            </MudPopover>
         </div>
 
         <MudStack Row Spacing="1" AlignItems="AlignItems.Center" StretchItems="StretchItems.End">
             <MudTooltip ShowOnHover Text="@(_autoScrollEnabled ? "Pause Autoscroll" : "Resume Autoscroll")">
                 <MudIconButton OnClick="@(() => _autoScrollEnabled = !_autoScrollEnabled)"
                                Icon="@(_autoScrollEnabled? Icons.Material.Outlined.Pause : Icons.Material.Outlined.PlayArrow)"
-                               Variant="Variant.Outlined" DropShadow="false"
-                               Class="mb-1" Style="height:40px; width:40px; border-color:var(--mud-palette-lines-inputs)" />
+                               Variant="Variant.Outlined" DropShadow="false" Class="mb-1" 
+                               Style="height:40px; width:40px; border-color:var(--mud-palette-lines-inputs)" />
             </MudTooltip>
 
             <MudTextField @ref="@_chatField"
@@ -116,7 +158,7 @@
                           Margin="Margin.Dense" Variant="Variant.Outlined"
                           ReadOnly="@_isChatReadonly" OnKeyDown="@ChatKeyDown"
                           Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.InsertEmoticon"
-                          OnAdornmentClick="@(() => Popup.Add("Emotes coming soon!"))" />
+                          OnAdornmentClick="@(() => _emotePanelOpen = !_emotePanelOpen)" />
         </MudStack>
 
         <MudButton OnClick="@SendMessage"
@@ -130,8 +172,9 @@
     </MudStack>
 </MudPaper>
 
+
 <MudMenu @ref="@_contextMenu" Open="@_contextMenuOpen" OpenChanged="@(open => { _autoScrollEnabled = !open; _contextMenuOpen = open; })" Dense PositionAtCursor>
-    <MudMenuItem Icon="@Icons.Material.Filled.Info" IconColor="Color.Info" AutoClose>
+    <MudMenuItem Icon="@Icons.Material.Filled.Info" IconColor="Color.Info" AutoClose OnClick="@(() => Popup.Add("Functionality coming soon!"))">
         View Details for <span style="color:@GetChatterColor(_selectedMessage)">@_selectedMessage?.ChatterUserName</span>
     </MudMenuItem>
 
@@ -170,7 +213,7 @@
 </MudMenu>
 
 
-    @code {
+@code {
     [Parameter, EditorRequired] public string BroadcasterId { get; set; } = null!;
     [Parameter, EditorRequired] public string BroadcasterUsername { get; set; } = null!;
     [Parameter] public string Height { get; set; } = "";
@@ -196,6 +239,7 @@
     private bool _sendBtnDisabled;
     private bool _autoScrollEnabled = true;
     private bool _contextMenuOpen;
+    private bool _emotePanelOpen;
 
     private ChannelChatMessage? _selectedMessage;
     private List<ChannelChatMessage> _messages = [];
@@ -243,14 +287,14 @@
 
     private async Task SendMessage()
     {
-        if (string.IsNullOrWhiteSpace(_chatMessage))
-            return;
-
         if (!Events.IsConnected)
         {
             Popup.Add("No active session found, please connect and retry.", Severity.Warning);
             return;
         }
+
+        if (string.IsNullOrWhiteSpace(_chatMessage))
+            return;
 
         if (string.IsNullOrEmpty(Events.UserId))
         {

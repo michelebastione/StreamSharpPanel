@@ -1,4 +1,5 @@
 ﻿using System.Text.Json.Serialization;
+using StreamSharpPanel.Models.Http;
 using StreamSharpPanel.Static;
 
 namespace StreamSharpPanel.Models.ChatterInfo;
@@ -90,4 +91,35 @@ public class ChannelEmoteInfo : EmoteInfo
     };
 }
 
-internal enum ChannelEmoteType { BitsTier, Follower, Subscriptions }
+public class UserEmoteSet
+{
+    public UserEmoteInfo[] Data { get; set; } = [];
+    public string Template { get; set; } = null!;
+    public Pagination? Pagination { get; init; }
+}
+
+public class UserEmoteInfo : ChannelEmoteInfo
+{
+    public string OwnerId { get; set; } = null!;
+    internal string StaticUrl => $"{TwitchUris.EmotesUri}{Id}/static/light/1.0";
+    internal string AnimatedUrl => $"{TwitchUris.EmotesUri}{Id}/animated/light/1.0";
+}
+
+
+internal enum ChannelEmoteType 
+{
+    None,
+    BitsTier, 
+    Follower, 
+    Subscriptions,
+    ChannelPoints,
+    Rewards,
+    HypeTrain,
+    Prime,
+    Turbo,
+    Smilies,
+    Globals,
+    Owl2019,
+    TwoFactor,
+    LimitedTime
+}
