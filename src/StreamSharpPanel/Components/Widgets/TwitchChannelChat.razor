@@ -1,175 +1,235 @@
-﻿@implements IDisposable
+﻿@using StreamSharpPanel.Models.ChatterInfo
+@using StreamSharpPanel.Models.Http
+@using System.Net.WebSockets
+
+@implements IDisposable
 
 @inject IJSRuntime Js
 @inject ISnackbar Popup
+@inject ILogger<TwitchChannelChat> Log
 @inject EventSubService Events
 @inject ApiCallerService Api
 @inject AssetService Asset
 
 
-<MudPaper Class="pa-2" Style="overflow-y:auto;" Height="@Height" Elevation="1">
-    <MudStack Spacing="2" Style="height:100%" StretchItems="StretchItems.Start">
-        <div id="@_chatId" style="height:100%; overflow-y:auto;">
-            <MudChat ArrowPosition="ChatArrowPosition.None" Dense Style="column-gap:unset">
-                @foreach (var msg in _messages)
-                {
-                    <MudChatBubble @key="@msg.MessageId" OnContextClick="@(e => RightClickMessage(e, msg))" Style="width:100%; user-select:unset;">
-                        @if (msg.IsDeleted)
-                        {
-                            <span style="cursor:text">
-                                @(msg.ChatterUserName)'s message was deleted by a moderator:
-                                @if (msg.ShowDeleted)
-                                {
-                                    @msg.Message.Text
-                                }
-                                else
-                                {
-                                    <MudLink OnClick="@(() => msg.ShowDeleted = true)">&lt;Click to view&gt</MudLink>
-                                }
-                            </span>
-                        }
-                        else
-                        {
-                            if (GetChatterBadgesUrls(msg) is { Length: > 0 } urls)
+<MudPaper Class="pa-2" Style="overflow:hidden auto;" Height="@Height" Elevation="1">
+    <MudTabs @bind-ActivePanelIndex="@_tabIndex" Elevation="0" MinimumTabWidth="20px" Style="align-items:end" TabHeaderClass="tab-headers">
+        <MudTabPanel Text="" Icon="@Icons.Material.Outlined.Chat" ToolTip="Chat" />
+        <MudTabPanel Text="" Icon="@Icons.Material.Outlined.PeopleAlt" ToolTip="Community" />
+    </MudTabs>
+
+    @if (_tabIndex == 0)
+    {
+        <MudStack Spacing="2" Style="height:calc(100% - 48px)" StretchItems="StretchItems.Start">
+            <div id="@_chatId" style="height:100%; overflow-y:auto;">
+                <MudChat ArrowPosition="ChatArrowPosition.None" Dense Style="column-gap:unset">
+                    @foreach (var msg in _messages)
+                    {
+                        <MudChatBubble @key="@msg.MessageId" OnContextClick="@(e => RightClickMessage(e, msg))" Style="width:100%; user-select:unset;">
+                            @if (msg.IsDeleted)
                             {
-                                <span>
-                                    @foreach (var url in urls)
+                                <span style="cursor:text">
+                                    @(msg.ChatterUserName)'s message was deleted by a moderator:
+                                    @if (msg.ShowDeleted)
                                     {
-                                        if (!string.IsNullOrEmpty(url))
-                                        {
-                                            <MudImage Src="@url" Style="vertical-align:middle" Class="mr-1" />
-                                        }
+                                        @msg.Message.Text
+                                    }
+                                    else
+                                    {
+                                        <MudLink OnClick="@(() => msg.ShowDeleted = true)">&lt;Click to view&gt</MudLink>
                                     }
                                 </span>
                             }
-
-                            <span style="color:@GetChatterColor(msg); font-weight:bold;">
-                                @msg.ChatterUserName
-                            </span>
-
-                            <span>: </span>
-
-                            foreach (var fragment in msg.Message.Fragments)
+                            else
                             {
-                                switch (fragment.FragmentType)
+                                if (GetChatterBadgesUrls(msg) is { Length: > 0 } urls)
                                 {
-                                    case MessageFragmentType.Emote when fragment.Emote is { EmoteSetId: var setId, Id: var id }:
-                                        if (setId == "0")
+                                    <span>
+                                        @foreach (var url in urls)
                                         {
-                                            <MudImage Src="@Asset.GlobalEmoticons.Urls[id]" Alt="@fragment.Text" Style="vertical-align:middle" />
+                                            if (!string.IsNullOrEmpty(url))
+                                            {
+                                                <MudImage Src="@url" Style="vertical-align:middle" Class="mr-1" />
+                                            }
                                         }
-                                        else
-                                        {
-                                            <MudImage Src="@Asset.ChannelEmoticons[setId].Urls[id]" Alt="@fragment.Text" Style="vertical-align:middle" />
-                                        }
-                                        break;
+                                    </span>
+                                }
 
-                                    case MessageFragmentType.Cheermote when fragment.Cheermote is { } cheer:
-                                        var image = Asset.GlobalCheermotes.Data
-                                        .FirstOrDefault(x => x.Prefix == cheer.Prefix)
-                                        ?.Tiers.FirstOrDefault(x => x.Id == cheer.Tier.ToString())
-                                        ?.Images.Light;
+                                <span style="color:@GetChatterColor(msg); font-weight:bold;">
+                                    @msg.ChatterUserName
+                                </span>
 
-                                        var src = image?.Animated.TryGetValue("1", out var anim) is true ? anim : "";
-                                        var srcFall = image?.Animated.TryGetValue("1", out var @static) is true ? @static : "";
+                                <span>: </span>
 
-                                        <MudImage Src="@src" FallbackSrc="@srcFall" Alt="@fragment.Text" Style="vertical-align:middle" />
-                                        break;
+                                foreach (var fragment in msg.Message.Fragments)
+                                {
+                                    switch (fragment.FragmentType)
+                                    {
+                                        case MessageFragmentType.Emote when fragment.Emote is { EmoteSetId: var setId, Id: var id }:
+                                            if (setId == "0")
+                                            {
+                                                <MudImage Src="@Asset.GlobalEmoticons.Urls[id]" Alt="@fragment.Text" Style="vertical-align:middle" />
+                                            }
+                                            else
+                                            {
+                                                <MudImage Src="@Asset.ChannelEmoticons[setId].Urls[id]" Alt="@fragment.Text" Style="vertical-align:middle" />
+                                            }
+                                            break;
 
-                                    case MessageFragmentType.Mention when fragment.Mention is { UserName: var user and not "", UserId: var id }:
-                                        @if (id == BroadcasterId)
-                                        {
-                                            <span style="cursor:default">
-                                                <mark class="px-1">@user</mark>
-                                            </span>
-                                        }
-                                        else
-                                        {
-                                            <span style="font-weight:bold; cursor:default;">@@@user</span>
-                                        }
-                                        break;
+                                        case MessageFragmentType.Cheermote when fragment.Cheermote is { } cheer:
+                                            var image = Asset.GlobalCheermotes.Data
+                                                .FirstOrDefault(x => x.Prefix == cheer.Prefix)
+                                                ?.Tiers.FirstOrDefault(x => x.Id == cheer.Tier.ToString())
+                                                ?.Images.Light;
 
-                                    default:
-                                        <span style="cursor:text">@fragment.Text</span>
-                                        break;
+                                            var src = image?.Animated.TryGetValue("1", out var anim) is true ? anim : "";
+                                            var srcFall = image?.Animated.TryGetValue("1", out var @static) is true ? @static : "";
+
+                                            <MudImage Src="@src" FallbackSrc="@srcFall" Alt="@fragment.Text" Style="vertical-align:middle" />
+                                            break;
+
+                                        case MessageFragmentType.Mention when fragment.Mention is { UserName: var user and not "", UserId: var id }:
+                                            @if (id == BroadcasterId)
+                                            {
+                                                <span style="cursor:default">
+                                                    <mark class="px-1">@user</mark>
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span style="font-weight:bold; cursor:default;">@@@user</span>
+                                            }
+                                            break;
+
+                                        default:
+                                            <span style="cursor:text">@fragment.Text</span>
+                                            break;
+                                    }
                                 }
                             }
-                        }
-                    </MudChatBubble>
-                }
-            </MudChat>
-
-            <MudOverlay @bind-Visible="@_emotePanelOpen" AutoClose />
-            <MudPopover @bind-Open="@_emotePanelOpen" 
-                        OverflowBehavior="OverflowBehavior.FlipAlways" 
-                        RelativeWidth="DropdownWidth.Ignore" 
-                        AnchorOrigin="Origin.BottomCenter" 
-                        TransformOrigin="Origin.BottomCenter"
-                        Style="width:280px">
-
-                <div class="d-flex p-1" style="position:relative; z-index:10; justify-content:end; border-bottom:2px solid #ebebeb; background-color:#27273A">
-                    <MudIconButton OnClick="@(() => _emotePanelOpen = false)" Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Error" DropShadow="false" Ripple="false" />
-                </div>
-                <MudGrid Spacing="1" Class="mt-1 pl-3 py-1 pr-1" Style="height:200px; overflow-y:scroll; overflow-x:hidden">
-                    @if (Asset.UserEmotes is { } emotes)
-                    {
-                        foreach (var group in Asset.UserEmotes.OrderBy(x => x.Key.DisplayName == "Global" ? 1 : 0).ThenBy(x => x.Key.DisplayName))
-                        {
-                            var user = group.Key;
-                            <MudItem xs="12" Class="d-flex align-content-center mb-2" Style="gap:8px">
-                                <MudText Typo="Typo.h6" Class="fw-bold">@user.DisplayName</MudText>
-                                @if (!string.IsNullOrEmpty(user.ProfileImageUrl))
-                                {
-                                    <MudAvatar Elevation="3" Size="Size.Small" Style="width:34px; height:34px;">
-                                        <MudImage Src="@user.ProfileImageUrl" Alt="@user.DisplayName" />
-                                    </MudAvatar>
-                                }
-                            </MudItem>
-
-                            foreach (var em in group)
-                            {
-                                <MudItem xs="3" @key="@em.Id">
-                                    <MudButton OnClick="@(() => { if (!string.IsNullOrEmpty(_chatMessage)) _chatMessage += " "; _chatMessage += $"{em.Name} "; })" DropShadow="false" Class="pa-0">
-                                        <MudImage Src="@em.AnimatedUrl" FallbackSrc="@em.StaticUrl" Alt="@em.Name" Style="vertical-align:middle;" />
-                                    </MudButton>
-                                </MudItem>
-                            }
-
-                            <MudDivider Light Class="mt-4 mb-2" />
-                        }
+                        </MudChatBubble>
                     }
-                </MudGrid>
-            </MudPopover>
-        </div>
+                </MudChat>
 
-        <MudStack Row Spacing="1" AlignItems="AlignItems.Center" StretchItems="StretchItems.End">
-            <MudTooltip ShowOnHover Text="@(_autoScrollEnabled ? "Pause Autoscroll" : "Resume Autoscroll")">
-                <MudIconButton OnClick="@(() => _autoScrollEnabled = !_autoScrollEnabled)"
-                               Icon="@(_autoScrollEnabled? Icons.Material.Outlined.Pause : Icons.Material.Outlined.PlayArrow)"
-                               Variant="Variant.Outlined" DropShadow="false" Class="mb-1" 
-                               Style="height:40px; width:40px; border-color:var(--mud-palette-lines-inputs)" />
-            </MudTooltip>
+                <MudOverlay @bind-Visible="@_emotePanelOpen" AutoClose />
+                <MudPopover @bind-Open="@_emotePanelOpen"
+                            OverflowBehavior="OverflowBehavior.FlipAlways"
+                            RelativeWidth="DropdownWidth.Ignore"
+                            AnchorOrigin="Origin.BottomCenter"
+                            TransformOrigin="Origin.BottomCenter"
+                            Style="width:280px">
 
-            <MudTextField @ref="@_chatField"
-                          T="string" @bind-Value="@_chatMessage"
-                          Placeholder="Send a message"
-                          MaxLines="5" MaxLength="500"
-                          AutoGrow Immediate Class="mt-2 mb-3"
-                          Margin="Margin.Dense" Variant="Variant.Outlined"
-                          ReadOnly="@_isChatReadonly" OnKeyDown="@ChatKeyDown"
-                          Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.InsertEmoticon"
-                          OnAdornmentClick="@(() => _emotePanelOpen = !_emotePanelOpen)" />
-        </MudStack>
+                    <div class="d-flex p-1" style="position:relative; z-index:10; justify-content:end; border-bottom:2px solid #ebebeb; background-color:#27273A">
+                        <MudIconButton OnClick="@(() => _emotePanelOpen = false)"
+                                        Icon="@Icons.Material.Filled.Close"
+                                        Size="Size.Small" Color="Color.Error"
+                                        DropShadow="false" Ripple="false" />
+                    </div>
 
-        <MudButton OnClick="@SendMessage"
-                   Variant="Variant.Filled"
-                   Color="Color.Primary"
-                   DropShadow="false"
-                   Disabled="@_sendBtnDisabled"
-                   Style="border-radius:9000px; height:2.5rem; font-weight:600">
-            Chat
-        </MudButton>
-    </MudStack>
+                    <MudGrid Spacing="1" Class="mt-1 pl-3 py-1 pr-1" Style="height:200px; overflow-y:scroll; overflow-x:hidden">
+                        @if (Asset.UserEmotes is { } emotes)
+                        {
+                            foreach (var group in OrderedEmoteGroups()!)
+                            {
+                                var user = group.Key;
+                                <MudItem xs="12" Class="d-flex align-content-center mb-2" Style="gap:8px">
+                                    <MudText Typo="Typo.h6" Class="fw-bold">@user.DisplayName</MudText>
+                                    @if (!string.IsNullOrEmpty(user.ProfileImageUrl))
+                                    {
+                                        <MudAvatar Elevation="3" Size="Size.Small" Style="width:34px; height:34px;">
+                                            <MudImage Src="@user.ProfileImageUrl" Alt="@user.DisplayName" />
+                                        </MudAvatar>
+                                    }
+                                </MudItem>
+
+                                foreach (var em in group)
+                                {
+                                    <MudItem xs="3" @key="@em">
+                                        <MudButton OnClick="@(() => AddEmoteToMessage(em.Name))" DropShadow="false" Class="pa-0">
+                                            <MudImage Src="@em.AnimatedUrl" FallbackSrc="@em.StaticUrl" Alt="@em.Name" Style="vertical-align:middle;" />
+                                        </MudButton>
+                                    </MudItem>
+                                }
+
+                                <MudDivider Light Class="mt-4 mb-2" />
+                            }
+                        }
+                    </MudGrid>
+                </MudPopover>
+            </div>
+
+            <MudStack Row Spacing="1" AlignItems="AlignItems.Center" StretchItems="StretchItems.End">
+                <MudTooltip ShowOnHover Text="@(_autoScrollEnabled ? "Pause Autoscroll" : "Resume Autoscroll")">
+                    <MudIconButton OnClick="@(() => _autoScrollEnabled = !_autoScrollEnabled)"
+                                    Icon="@(_autoScrollEnabled? Icons.Material.Outlined.Pause : Icons.Material.Outlined.PlayArrow)"
+                                    Variant="Variant.Outlined" DropShadow="false" Class="mb-1"
+                                    Style="height:40px; width:40px; border-color:var(--mud-palette-lines-inputs)" />
+                </MudTooltip>
+
+                <MudTextField @ref="@_chatField"
+                                T="string" @bind-Value="@_myChatMessage"
+                                Placeholder="Send a message"
+                                MaxLines="5" MaxLength="500"
+                                AutoGrow Immediate Class="mt-2 mb-3"
+                                Margin="Margin.Dense" Variant="Variant.Outlined"
+                                ReadOnly="@_isChatReadonly" OnKeyDown="@ChatKeyDown"
+                                Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.InsertEmoticon"
+                                OnAdornmentClick="@(() => _emotePanelOpen = !_emotePanelOpen)" />
+            </MudStack>
+
+            <MudButton OnClick="@SendMessage"
+                        Variant="Variant.Filled"
+                        Color="Color.Primary"
+                        DropShadow="false"
+                        Disabled="@_sendBtnDisabled"
+                        Style="border-radius:9000px; height:2.5rem; font-weight:600">
+                Chat
+            </MudButton>
+        </MudStack>   
+    }
+
+    else
+    {
+        if (_chatters is null or { Count: 0 })
+        {
+            <MudText Align="Align.Center" Class="mt-5 p-3">Here you'll find who's connected to your channel's chat</MudText>
+        }
+        else
+        {
+            <div class="h-100 p-2" style="overflow-y:auto">
+                @foreach (var group in _chatters.OrderBy(x => x.Key))
+                {
+                    var text = group.Key switch
+                    {
+                        ChatterType.Broadcaster => "Broadcaster",
+                        ChatterType.Moderator => "Moderators",
+                        ChatterType.Vip => "VIPs",
+                        ChatterType.Bot => "Chat bots",
+                        _ => "Spectators"
+                    };
+
+                    <MudStack Row AlignItems="AlignItems.Center" Class="my-1 pl-2" Spacing="2" Style="width:12rem; border-bottom:1px solid grey;">
+                        @if (group.Key == ChatterType.Chatter)
+                        {
+                            <MudIcon Icon="@Icons.Material.Outlined.Person" />
+                        }
+                        else
+                        {
+                            <MudImage Src="@Asset.GetChatterBadge(group.Key)?.Url1x" Alt="@group.Key.ToString()" Style="vertical-align:middle" />
+                        }
+                        <MudText Typo="Typo.h6">@text</MudText>
+                    </MudStack>
+
+                    <MudList T="TwitchChatter" Dense>
+                        @foreach (var chatter in group)
+                        {
+                            <MudListItem Dense="true" Text="@chatter.UserName" />                    
+                        }
+                    </MudList>
+                }
+            </div>
+        }
+    }
 </MudPaper>
 
 
@@ -215,6 +275,7 @@
 
 @code {
     [Parameter, EditorRequired] public string BroadcasterId { get; set; } = null!;
+    [Parameter, EditorRequired] public string BroadcasterLogin { get; set; } = null!;
     [Parameter, EditorRequired] public string BroadcasterUsername { get; set; } = null!;
     [Parameter] public string Height { get; set; } = "";
 
@@ -233,21 +294,27 @@
     private MudTextField<string> _chatField = null!;
 
     private CompositeDisposable _eventHandlers = [];
+    private CancellationTokenSource? _connectionCancSource = null;
+    private Task? _updateChattersTask;
 
-    private string? _chatMessage;
+    private int _tabIndex;
+    private string? _myChatMessage;
+
+    private ChannelChatMessage? _selectedMessage;
+    private List<ChannelChatMessage> _messages = [];
+    private ILookup<ChatterType, TwitchChatter>? _chatters = null;
+
     private bool _isChatReadonly;
     private bool _sendBtnDisabled;
     private bool _autoScrollEnabled = true;
     private bool _contextMenuOpen;
     private bool _emotePanelOpen;
 
-    private ChannelChatMessage? _selectedMessage;
-    private List<ChannelChatMessage> _messages = [];
-
 
     protected override void OnInitialized()
     {
         _eventHandlers.Add(Events.OnEventReceived<ChannelChatMessage>(AddMessage, msg => msg.BroadcasterUserId == BroadcasterId));
+        _eventHandlers.Add(Events.OnConnectionStatusChanged(ConnectionStatusChanged));
         _eventHandlers.Add(Asset.OnAssetsUpdated<BadgesUpdated>(UpdateBadges));
 
         UpdateBadges();
@@ -293,7 +360,7 @@
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_chatMessage))
+        if (string.IsNullOrWhiteSpace(_myChatMessage))
             return;
 
         if (string.IsNullOrEmpty(Events.UserId))
@@ -307,8 +374,8 @@
 
         try
         {
-            await Api.SendChatMessage(BroadcasterId, Events.UserId, _chatMessage, CancellationToken.None);
-            _chatMessage = string.Empty;
+            await Api.SendChatMessage(BroadcasterId, Events.UserId, _myChatMessage, CancellationToken.None);
+            _myChatMessage = string.Empty;
         }
         catch
         {
@@ -329,9 +396,9 @@
         {
             await _chatField.BlurAsync();
 
-            if (string.IsNullOrWhiteSpace(_chatMessage))
+            if (string.IsNullOrWhiteSpace(_myChatMessage))
             {
-                _chatMessage = "";
+                _myChatMessage = "";
                 return;
             }
 
@@ -425,8 +492,104 @@
         }
     }
 
+    private void AddEmoteToMessage(string emoteName)
+    {
+        if (!string.IsNullOrEmpty(_myChatMessage))
+        {
+            _myChatMessage += " ";
+        }
+        _myChatMessage += $"{emoteName} ";
+    }
+
+    private async Task<ILookup<ChatterType, TwitchChatter>?> GetChatters()
+    {
+        try
+        {
+            var mods = (await Api.GetModerators(BroadcasterId))?.Data ?? [];
+            var modsIds = mods.Select(x => x.UserId);
+
+            var vips = (await Api.GetVips(BroadcasterId))?.Data ?? [];
+            var vipsIds = vips.Select(x => x.UserId);
+
+            var chatters = (await Api.GetChatters(BroadcasterId, BroadcasterId))?.Data ?? [];
+            var broadcaster = chatters.FirstOrDefault(x => x.UserId == BroadcasterId) 
+                ?? new TwitchChatter { UserId = BroadcasterId, UserLogin = BroadcasterUsername, UserName = BroadcasterUsername };
+
+            var filteredChatters = chatters.ExceptBy(modsIds.Concat(vipsIds).Append(BroadcasterId), x => x.UserId) ?? [];
+            var onlineMods = mods.Join(chatters, x => x.UserId, y => y.UserId, (x, y) => y);
+            var onlineVips = mods.Join(vips, x => x.UserId, y => y.UserId, (x, y) => y);
+
+            return filteredChatters.Select(x => (Type: ChatterType.Chatter, User: x))
+                .Concat(onlineMods.Select(x => (Type: ChatterType.Moderator, User: x)))
+                .Concat(onlineVips.Select(x => (Type: ChatterType.Vip, User: x)))
+                .Append((Type: ChatterType.Broadcaster, User: broadcaster))
+                .ToLookup(x => x.Type, x => x.User);
+        }
+        catch(Exception ex)
+        {
+            Popup.Add($"An error occurred while fetching chatters: {ex.Message}", Severity.Error);
+            Log.LogError(ex, "An error occurred while fetching chatters: ");
+
+            return null;
+        }
+    }
+
+    private async Task UpdateChattersTask(CancellationToken cancellation)
+    {
+        _chatters = await GetChatters();
+        await InvokeAsync(StateHasChanged);
+
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        while (await timer.WaitForNextTickAsync(cancellation))
+        {
+            try
+            {
+                _chatters = await GetChatters();
+                await InvokeAsync(StateHasChanged);
+            }
+            catch(OperationCanceledException)
+            {
+                // expected when the connection is closed
+            }
+        }
+    }
+
+    private void ConnectionStatusChanged(WebSocketState wsState)
+    {
+        if (wsState == WebSocketState.Open)
+        {
+            _connectionCancSource = new CancellationTokenSource();
+            _updateChattersTask = UpdateChattersTask(_connectionCancSource.Token);
+        }
+        else
+        {
+            _connectionCancSource?.Cancel();
+            _connectionCancSource?.Dispose();
+            _connectionCancSource = null;
+
+            _chatters = null;
+            StateHasChanged();
+        }
+    }
+
+    // todo: convert to lookup
+    private IEnumerable<IGrouping<TwitchUser, UserEmoteInfo>>? OrderedEmoteGroups() => Asset.UserEmotes
+        ?.OrderBy(x => x.Key.DisplayName == "Global" ? 1 : 0)
+        .ThenBy(x => x.Key.DisplayName == BroadcasterUsername ? 0 : 1)
+        .ThenBy(x => x.Key.DisplayName);
+
+
     public void Dispose()
     {
         _eventHandlers.Dispose();
     }
 }
+
+
+<style>
+    .tab-headers {
+        transform: scale(0.75);
+        margin-top: -8px;
+        margin-right: -12px;
+    }
+</style>

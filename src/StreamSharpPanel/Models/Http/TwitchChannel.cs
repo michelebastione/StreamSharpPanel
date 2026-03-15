@@ -3,7 +3,7 @@
 public class TwitchChannelSearchResult
 {
     public TwitchChannelData[] Data { get; init; } = [];
-    public Pagination? Pagination { get; init; }
+    public TwitchPagination? Pagination { get; init; }
 }
 
 public class TwitchChannelData
@@ -26,9 +26,4 @@ public class TwitchChannelData
     public string? Title { get; init; }
     
     public DateTimeOffset StartedAt { get; init; }
-}
-
-public class Pagination
-{
-    public string? Cursor { get; init; }
 }

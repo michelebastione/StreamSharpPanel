@@ -95,7 +95,7 @@ public class UserEmoteSet
 {
     public UserEmoteInfo[] Data { get; set; } = [];
     public string Template { get; set; } = null!;
-    public Pagination? Pagination { get; init; }
+    public TwitchPagination? Pagination { get; init; }
 }
 
 public class UserEmoteInfo : ChannelEmoteInfo

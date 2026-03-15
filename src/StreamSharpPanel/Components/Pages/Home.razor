@@ -19,17 +19,17 @@
 
 <MudGrid Spacing="2" Class="mt-3">
     <MudItem xs="12" sm="6" md="5" lg="4" xl="3">
-        <TwitchChannelFeed BroadcasterId="@_userId" BroadcasterUsername="@_userLogin" Height="30rem" />
+        <TwitchChannelFeed BroadcasterId="@_userId" BroadcasterLogin="@_userLogin" BroadcasterUsername="@_userName" Height="30rem" />
     </MudItem>
 
     <MudItem xs="12" sm="6" md="5" lg="4" xl="3">
-        <TwitchChannelChat BroadcasterId="@_userId" BroadcasterUsername="@_userLogin" Height="30rem" />
+        <TwitchChannelChat BroadcasterId="@_userId" BroadcasterLogin="@_userLogin" BroadcasterUsername="@_userName" Height="30rem" />
     </MudItem>
 
     @foreach (var chat in _chats)
     {
         <MudItem @key="@chat.Id" xs="4">
-            <TwitchChannelChat BroadcasterId="@chat.Id" BroadcasterUsername="@chat.Username" />
+            <TwitchChannelChat BroadcasterId="@chat.Id" BroadcasterLogin="@chat.Login" BroadcasterUsername="@chat.Username" Height="30rem" />
         </MudItem>
     }
 
@@ -48,10 +48,11 @@
 
 
 @code {
-    List<(string Id, string Username)> _chats = [];
+    List<(string Id, string Login, string Username)> _chats = [];
 
     private string _userId = "";
     private string _userLogin = "";
+    private string _userName = "";
 
     private string SomeColor => State.IsDarkMode ? "grey" : "gainsboro";
     private string SomeOtherColor => State.IsDarkMode ? "white" : "black";
@@ -60,6 +61,7 @@
     {
         _userId = Settings.CurrentSettings.UserId;
         _userLogin = Settings.CurrentSettings.Login;
+        _userName = Settings.CurrentSettings.Username;
 
         State.OnDarkModeChanged += RefreshScreen;
         Settings.OnSettingsUpdated += RefreshData;
@@ -115,12 +117,12 @@
         Popup.Add("Disconnected from the EventSub", Severity.Info);
     }
 
-    private async Task AddChat(string id, string username)
+    private async Task AddChat(string id, string login, string username)
     {
         try
         {
             await Api.Subscribe(SubscriptionType.Channel.ChatMessage, "1", Events.CurrentSession, Settings.CurrentSettings.UserId, id);
-            _chats.Add((id, username));
+            _chats.Add((id, login, username));
             StateHasChanged();
         }
         catch

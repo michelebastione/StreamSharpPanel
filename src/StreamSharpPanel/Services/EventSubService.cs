@@ -1,11 +1,11 @@
+using StreamSharpPanel.Models;
+using StreamSharpPanel.Models.NotificationEvents;
 using StreamSharpPanel.Static;
 using System.Net.WebSockets;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using StreamSharpPanel.Models;
-using StreamSharpPanel.Models.NotificationEvents;
 using static StreamSharpPanel.Static.General;
 
 namespace StreamSharpPanel.Services;
@@ -33,6 +33,7 @@ public sealed class EventSubService(ILogger<EventSubService> logger, ApiCallerSe
 
     private readonly HashSet<string> _readMessages = [];
     private readonly Subject<TwitchNotification> _notificationStream = new();
+    private readonly Subject<WebSocketState> _connectionSub = new();
 
     internal string CurrentSession { get; private set; } = "";
     internal string? UserId { get; private set; }
@@ -64,6 +65,7 @@ public sealed class EventSubService(ILogger<EventSubService> logger, ApiCallerSe
 
             await _ws.ConnectAsync(_currentConnectionUri, _cancSource.Token);
             IsConnected = true;
+            _connectionSub.OnNext(_ws.State);
 
             _listenTask = Listen(_cancSource.Token);
             await _completionSource.Task;
@@ -87,6 +89,7 @@ public sealed class EventSubService(ILogger<EventSubService> logger, ApiCallerSe
         await Task.NullSafeInvoke(_cancSource?.CancelAsync());
         //await Task.NullSafeInvoke(_listenTask);
         IsConnected = false;
+        _connectionSub.OnNext(_ws.State);
     }
 
     private async Task Listen(CancellationToken cancellationToken)
@@ -266,6 +269,11 @@ public sealed class EventSubService(ILogger<EventSubService> logger, ApiCallerSe
             .Subscribe(subCallback);
     }
 
+    internal IDisposable OnConnectionStatusChanged(Action<WebSocketState> subCallback)
+    {
+        return _connectionSub.Subscribe(subCallback);
+    }
+
     // todo: add a session service to handle session data for both eventsub and api
     // todo: should this method be less tightly coupled with the current state?
     internal async Task SubscribeToStandardEvents(string broadcasterId, CancellationToken ct)
@@ -273,26 +281,31 @@ public sealed class EventSubService(ILogger<EventSubService> logger, ApiCallerSe
         if (UserId is null)
             throw new InvalidOperationException("The user id has not been specified");
 
-        await _api.Subscribe(SubscriptionType.Channel.ChatMessage, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
+        ReadOnlySpan<Task> subscriptionTasks =
+        [
+            _api.Subscribe(SubscriptionType.Channel.ChatMessage, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct),
 
-        await _api.Subscribe(SubscriptionType.Automod.MessageHold, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
-        await _api.Subscribe(SubscriptionType.Automod.MessageUpdate, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
+            _api.Subscribe(SubscriptionType.Automod.MessageHold, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct),
+            _api.Subscribe(SubscriptionType.Automod.MessageUpdate, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct),
 
-        await _api.Subscribe(SubscriptionType.Channel.Ban, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
-        await _api.Subscribe(SubscriptionType.Channel.Unban, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
-        await _api.Subscribe(SubscriptionType.Channel.UnbanRequestCreate, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
-        await _api.Subscribe(SubscriptionType.Channel.UnbanRequestResolve, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
-        //await _api.Subscribe(SubscriptionType.Channel.ChatMessageDelete, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
+            _api.Subscribe(SubscriptionType.Channel.Ban, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct),
+            _api.Subscribe(SubscriptionType.Channel.Unban, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct),
+            _api.Subscribe(SubscriptionType.Channel.UnbanRequestCreate, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct),
+            _api.Subscribe(SubscriptionType.Channel.UnbanRequestResolve, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct),
+            //_api.Subscribe(SubscriptionType.Channel.ChatMessageDelete, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct),
 
-        await _api.Subscribe(SubscriptionType.Channel.Follow, "2", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
-        await _api.Subscribe(SubscriptionType.Channel.Cheer, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
-        await _api.Subscribe(SubscriptionType.Channel.Raid, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
+            _api.Subscribe(SubscriptionType.Channel.Follow, "2", CurrentSession, UserId, broadcasterId, cancellationToken: ct),
+            _api.Subscribe(SubscriptionType.Channel.Cheer, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct),
+            _api.Subscribe(SubscriptionType.Channel.Raid, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct),
 
-        await _api.Subscribe(SubscriptionType.Channel.Subscribe, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
-        await _api.Subscribe(SubscriptionType.Channel.SubscriptionGift, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
-        await _api.Subscribe(SubscriptionType.Channel.SubscriptionMessage, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
+            _api.Subscribe(SubscriptionType.Channel.Subscribe, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct),
+            _api.Subscribe(SubscriptionType.Channel.SubscriptionGift, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct),
+            _api.Subscribe(SubscriptionType.Channel.SubscriptionMessage, "1", CurrentSession, UserId, broadcasterId, cancellationToken: ct),
 
-        await _api.Subscribe(SubscriptionType.Channel.ChannelPointsAutomaticRewardRedemption, "2", CurrentSession, UserId, broadcasterId, cancellationToken: ct);
+            _api.Subscribe(SubscriptionType.Channel.ChannelPointsAutomaticRewardRedemption, "2", CurrentSession, UserId, broadcasterId, cancellationToken: ct),
+        ];
+
+        await Task.WhenAll(subscriptionTasks);
     }
 
     private async Task ConnectionHealthCheck(CancellationToken cancellationToken)
@@ -349,6 +362,8 @@ public sealed class EventSubService(ILogger<EventSubService> logger, ApiCallerSe
         }
 
         IsConnected = false;
+        _connectionSub.OnNext(_ws.State);
+
         _ws.Dispose();
     }
 }

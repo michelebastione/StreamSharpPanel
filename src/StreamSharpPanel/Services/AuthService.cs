@@ -26,6 +26,7 @@ public class AuthService(ILogger<AuthService> logger, IHttpClientFactory http, S
                 AuthScopes.Channel.ReadRedemptions,
                 AuthScopes.Channel.ReadSubscriptions,
                 AuthScopes.Channel.Moderate,
+                AuthScopes.Channel.ReadVips,
                 AuthScopes.Moderation.Read,
                 AuthScopes.Moderator.ManageAutomod,
                 AuthScopes.Moderator.ManageAnnouncements,

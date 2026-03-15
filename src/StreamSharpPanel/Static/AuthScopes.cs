@@ -14,9 +14,10 @@ internal static class AuthScopes
         internal const string ManagePredictions = "channel:manage:predictions";
         internal const string ManageRaids = "channel:manage:raids";
         internal const string ManageVips = "channel:manage:vips";
-        internal const string ReadRedemptions = "channel:read:redemptions";
         internal const string ManageRedemptions = "channel:manage:redemptions";
         internal const string ReadSubscriptions = "channel:read:subscriptions";
+        internal const string ReadRedemptions = "channel:read:redemptions";
+        internal const string ReadVips = "channel:read:vips";
     }
 
     internal static class Clips

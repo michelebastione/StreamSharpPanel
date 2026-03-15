@@ -135,7 +135,7 @@ public class ApiCallerService(ILogger<ApiCallerService> logger, IHttpClientFacto
     {
         List<UserEmoteInfo> result = [];
 
-        bool isCursorEmpty = false;
+        bool isCursorEmpty;
         string? cursor = null;
         do
         {
@@ -188,6 +188,50 @@ public class ApiCallerService(ILogger<ApiCallerService> logger, IHttpClientFacto
         var size = scale switch { Scale.Medium => "2", Scale.Large => "3", _ => "1" };
 
         return await client.GetByteArrayAsync($"{badgeId}/{size}");
+    }
+
+    internal async Task<GetChatterResponse?> GetChatters(string broadcasterId, string moderatorId, int first = 100, string? cursor = null, CancellationToken cancellation = default)
+    {
+        using var client = http.CreateTwitchClient();
+
+        var query = $"broadcaster_id={broadcasterId}" +
+            $"&moderator_id={moderatorId}" +
+            $"&first={first}";
+
+        if (!string.IsNullOrEmpty(cursor))
+            query += $"&after={cursor}";
+
+        return await client.GetFromJsonAsync<GetChatterResponse>($"chat/chatters?{query}", JsonOptions, cancellation);
+    }
+
+    internal async Task<GetChatterResponse?> GetVips(string broadcasterId, ICollection<string>? userIds = null, int first = 20, string? cursor = null, CancellationToken cancellation = default)
+    {
+        using var client = http.CreateTwitchClient();
+
+        var query = $"broadcaster_id={broadcasterId}&first={first}";
+
+        foreach(var user in userIds ?? [])
+            query += $"&user_id={user}";
+
+        if (!string.IsNullOrEmpty(cursor))
+            query += $"&after={cursor}";
+
+        return await client.GetFromJsonAsync<GetChatterResponse>($"channels/vips?{query}", JsonOptions, cancellation);
+    }
+
+    internal async Task<GetChatterResponse?> GetModerators(string broadcasterId, ICollection<string>? userIds = null, int first = 20, string? cursor = null, CancellationToken cancellation = default)
+    {
+        using var client = http.CreateTwitchClient();
+
+        var query = $"broadcaster_id={broadcasterId}&first={first}";
+
+        foreach(var user in userIds ?? [])
+            query += $"&user_id={user}";
+
+        if (!string.IsNullOrEmpty(cursor))
+            query += $"&after={cursor}";
+
+        return await client.GetFromJsonAsync<GetChatterResponse>($"moderation/moderators?{query}", JsonOptions, cancellation);
     }
 
     internal async Task SendChatMessage(string broadcasterId, string userId, string message, CancellationToken cancellationToken)

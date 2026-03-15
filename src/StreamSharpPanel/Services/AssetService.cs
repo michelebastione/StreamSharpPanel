@@ -17,6 +17,20 @@ public class AssetService(ILogger<AssetService> logger, ApiCallerService api)
     public Dictionary<string, ChannelEmoteSet> ChannelEmoticons { get; private set; } = [];
     public ILookup<TwitchUser, UserEmoteInfo>? UserEmotes { get; private set; }
 
+    internal BadgeInfo? GetChatterBadge(ChatterType type)
+    {
+        var setId = type switch
+        {
+            ChatterType.Broadcaster => "broadcaster",
+            ChatterType.Moderator => "moderator",
+            ChatterType.Vip => "vip",
+            ChatterType.Bot => "bot-badge",
+            _ => null
+        };
+
+        return GlobalBadges.Data.FirstOrDefault(e => e.SetId == setId)?.Versions[0];
+    }
+
     public async Task<bool> UpdateGlobalAssetsUrls()
     {
         try
