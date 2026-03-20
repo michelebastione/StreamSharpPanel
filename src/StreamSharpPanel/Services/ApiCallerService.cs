@@ -318,7 +318,7 @@ public class ApiCallerService(ILogger<ApiCallerService> logger, IHttpClientFacto
         await client.PatchAsync($"moderation/unban_requests?{query}", null, cancellationToken);
     }
 
-    internal async Task ResolveAutomoddedMessage(string moderatorId, string messageId, bool allow, CancellationToken cancellationToken = default)
+    internal async Task<bool> ResolveAutomoddedMessage(string moderatorId, string messageId, bool allow, CancellationToken cancellationToken = default)
     {
         using var client = http.CreateTwitchClient();
 
@@ -326,10 +326,11 @@ public class ApiCallerService(ILogger<ApiCallerService> logger, IHttpClientFacto
         {
             UserId = moderatorId,
             MsgId = messageId,
-            Action = allow
+            Action = allow ? "allow" : "deny"
         };
 
-        await client.PostAsJsonAsync("moderation/automod/message", body, JsonOptions, cancellationToken);
+        var resp = await client.PostAsJsonAsync("moderation/automod/message", body, JsonOptions, cancellationToken);
+        return resp.IsSuccessStatusCode;
     }
 
     internal async Task<(bool Success, string? Msg)> StartRaid(string fromBroadcasterId, string toBroadcasterId, CancellationToken cancellationToken = default)

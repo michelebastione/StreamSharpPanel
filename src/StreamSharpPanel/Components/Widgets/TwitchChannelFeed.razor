@@ -16,14 +16,17 @@
         <MudList T="TwitchNotification" Dense>
             @foreach (var evt in _notifs)
             {
-                <MudListItem @key="@evt" Dense="true" Class="mb-1 p-1" Style="cursor:default; user-select:unset" @oncontextmenu="@(x => OpenMenu(x, evt))">
-                    @{
-                        var (ts, msg) = ParseNotification(evt);
+                if (evt is not (AutomodMessageHold { Resolved: true } or ChannelUnbanRequestCreate { Resolved: true }))
+                {
+                    <MudListItem @key="@evt" Dense="true" Class="mb-1 p-1" Style=@($"cursor:{GetMenuCursor(evt)}; user-select:unset") @oncontextmenu="@(x => OpenMenu(x, evt))">
+                        @{
+                            var (ts, msg) = ParseNotification(evt);
 
-                        <span style="font-weight:bold; cursor:text;">@ts.ToString("HH:mm")</span>
-                        <span style="font-style:italic; cursor:text;">@msg</span>
-                    }
-                </MudListItem>
+                            <span style="font-weight:bold; cursor:text;">@ts.ToString("HH:mm")</span>
+                            <span style="font-style:italic; cursor:text;">@msg</span>
+                        }
+                    </MudListItem>
+                }
             }
         </MudList>
     }
@@ -149,6 +152,13 @@
         }
     }
 
+    private static string GetMenuCursor(TwitchNotification notif)
+    {
+        return notif is ChannelBan or
+                        ChannelUnbanRequestCreate { Resolved: false } or
+                        AutomodMessageHold { Resolved: false } ? "cursor" : "default";
+    }
+
     private async Task Unban(string userId)
     {
         try
@@ -178,8 +188,11 @@
     {
         try
         {
-            await Api.ResolveAutomoddedMessage(BroadcasterId, held.MessageId, approve);
-            held.Resolved = true;
+            if (await Api.ResolveAutomoddedMessage(BroadcasterId, held.MessageId, approve))
+            {          
+                held.Resolved = true;
+                await InvokeAsync(StateHasChanged);
+            }
         }
         catch (Exception ex)
         {

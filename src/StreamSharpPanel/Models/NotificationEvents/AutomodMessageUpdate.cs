@@ -34,9 +34,9 @@ public class AutomodMessageUpdate : TwitchNotification
     public string Status { get; init; } = null!;
     public AutomodMessageStatus MessageStatus => Status switch
     {
-        "Approved" => AutomodMessageStatus.Approved,
-        "Denied" => AutomodMessageStatus.Denied,
-        "Expired" => AutomodMessageStatus.Expired,
+        "approved" => AutomodMessageStatus.Approved,
+        "denied" => AutomodMessageStatus.Denied,
+        "expired" => AutomodMessageStatus.Expired,
         _ => throw new UnreachableException($"Unknown automod message status: {Status}")
     };
 }

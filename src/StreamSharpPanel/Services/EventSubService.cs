@@ -246,6 +246,8 @@ public sealed class EventSubService(ILogger<EventSubService> logger, ApiCallerSe
             SubscriptionType.Channel.SubscriptionGift => payload.Event.Deserialize<ChannelSubscriptionGift>(JsonOptions),
             SubscriptionType.Channel.SubscriptionMessage => payload.Event.Deserialize<ChannelSubscriptionMessage>(JsonOptions),
             SubscriptionType.Channel.ChannelPointsCustomRewardRedemption => payload.Event.Deserialize<ChannelPointsCustomRewardAdd>(JsonOptions),
+            SubscriptionType.Automod.MessageHold => payload.Event.Deserialize<AutomodMessageHold>(JsonOptions),
+            SubscriptionType.Automod.MessageUpdate => payload.Event.Deserialize<AutomodMessageUpdate>(JsonOptions),
             _ => new UnhandledNotification()
         };
 
