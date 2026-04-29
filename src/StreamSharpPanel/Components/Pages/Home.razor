@@ -19,11 +19,15 @@
 
 <MudGrid Spacing="2" Class="mt-3">
     <MudItem xs="12" sm="6" md="5" lg="4" xl="3">
-        <TwitchChannelFeed BroadcasterId="@_userId" BroadcasterLogin="@_userLogin" BroadcasterUsername="@_userName" Height="30rem" />
+        <TwitchChannelChat BroadcasterId="@_userId" BroadcasterLogin="@_userLogin" BroadcasterUsername="@_userName" Height="30rem" />
     </MudItem>
 
     <MudItem xs="12" sm="6" md="5" lg="4" xl="3">
-        <TwitchChannelChat BroadcasterId="@_userId" BroadcasterLogin="@_userLogin" BroadcasterUsername="@_userName" Height="30rem" />
+        <TwitchConnectedUsers BroadcasterId="@_userId" BroadcasterLogin="@_userLogin" BroadcasterUsername="@_userName" Height="30rem" />
+    </MudItem>
+
+    <MudItem xs="12" sm="6" md="5" lg="4" xl="3">
+        <TwitchChannelFeed BroadcasterId="@_userId" BroadcasterLogin="@_userLogin" BroadcasterUsername="@_userName" Height="30rem" />
     </MudItem>
 
     @foreach (var chat in _chats)
@@ -150,7 +154,7 @@
             if (!string.IsNullOrEmpty(Settings.CurrentSettings.OauthToken) &&
                 !await Asset.UpdateGlobalAssetsUrls())
             {
-                Popup.Add("An error occurred while trying to fetch global assets", Severity.Warning);
+                Popup.Add("An error occurred while trying to fetch assets", Severity.Warning);
             }
         }
         catch { }

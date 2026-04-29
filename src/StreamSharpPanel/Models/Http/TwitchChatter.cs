@@ -1,6 +1,4 @@
-﻿using System.Text.Json.Serialization;
-
-namespace StreamSharpPanel.Models.Http;
+﻿namespace StreamSharpPanel.Models.Http;
 
 public class GetChatterResponse
 {

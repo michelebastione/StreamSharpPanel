@@ -5,12 +5,45 @@ namespace StreamSharpPanel.Models.ChatterInfo;
 public class BadgeSetCollection
 {
     public BadgeSet[] Data { get; set; } = [];
+
+    internal Dictionary<string, BadgeSet> BadgeSets
+    {
+        get
+        {
+            if (Data is [])
+                return [];
+
+            if (field.Count == 0)
+                field = Data.ToDictionary(b => b.SetId, b => b);
+
+            return field;
+        }
+    } = [];
+
+    internal BadgeSet? GetBadgeSet(string setId) => BadgeSets.GetValueOrDefault(setId);
 }
 
 public class BadgeSet
 {
     public string SetId { get; set; } = null!;
     public BadgeInfo[] Versions { get; set; } = [];
+
+    internal Dictionary<string, BadgeInfo> BadgeVersions
+    {
+        get
+        {
+            if (Versions is [])
+                return [];
+
+            if (field.Count == 0)
+                field = Versions.ToDictionary(b => b.Id, b => b);
+
+            return field;
+        }
+    } = [];
+
+    internal BadgeInfo? GetBadgeInfo(string versionId) => BadgeVersions.GetValueOrDefault(versionId);
+
 }
 
 public class BadgeInfo

@@ -1,0 +1,151 @@
+﻿@using StreamSharpPanel.Models.Http
+@using System.Net.WebSockets
+
+@implements IDisposable
+
+@inject ILogger<TwitchConnectedUsers> Log
+@inject ISnackbar Popup
+@inject ApiCallerService Api
+@inject AssetService Asset
+@inject EventSubService Events
+
+
+<MudPaper Class="pa-2" Style="overflow:hidden auto;" Height="@Height" Elevation="1">
+    @if (_chatters is null or { Count: 0 })
+    {
+        <MudText Align="Align.Center" Class="mt-5 p-3">Here you'll find who's connected to your channel's chat</MudText>
+    }
+    else
+    {
+        <div class="h-100 p-2" style="overflow-y:auto">
+            @foreach (var group in _chatters.OrderBy(x => x.Key))
+            {
+                var text = group.Key switch
+                {
+                    ChatterType.Broadcaster => "Broadcaster",
+                    ChatterType.Moderator => "Moderators",
+                    ChatterType.Vip => "VIPs",
+                    ChatterType.Bot => "Chat bots",
+                    _ => "Spectators"
+                };
+
+                <MudStack Row AlignItems="AlignItems.Center" Class="my-1 pl-2" Spacing="2" Style="width:12rem; border-bottom:1px solid grey;">
+                    @if (group.Key == ChatterType.Chatter)
+                    {
+                        <MudIcon Icon="@Icons.Material.Outlined.Person" />
+                    }
+                    else
+                    {
+                        <MudImage Src="@Asset.GetChatterBadge(group.Key)?.Url1x" Alt="@group.Key.ToString()" Style="vertical-align:middle" />
+                    }
+                    <MudText Typo="Typo.h6">@text</MudText>
+                </MudStack>
+
+                <MudList T="TwitchChatter" Dense>
+                    @foreach (var chatter in group)
+                    {
+                        <MudListItem Dense="true" Text="@chatter.UserName" />
+                    }
+                </MudList>
+            }
+        </div>
+    }
+</MudPaper>
+
+
+@code {
+    [Parameter, EditorRequired] public string BroadcasterId { get; set; } = null!;
+    [Parameter, EditorRequired] public string BroadcasterLogin { get; set; } = null!;
+    [Parameter, EditorRequired] public string BroadcasterUsername { get; set; } = null!;
+    [Parameter] public string Height { get; set; } = "";
+
+    private Task? _updateChattersTask;
+    private CompositeDisposable _eventHandlers = [];
+    private CancellationTokenSource? _connectionCancSource = null;
+
+    private ILookup<ChatterType, TwitchChatter>? _chatters = null;
+
+
+    protected override void OnInitialized()
+    {
+        _eventHandlers.Add(Events.OnConnectionStatusChanged(ConnectionStatusChanged));
+    }
+
+    
+    private async Task<ILookup<ChatterType, TwitchChatter>?> GetChatters()
+    {
+        try
+        {
+            var mods = (await Api.GetModerators(BroadcasterId))?.Data ?? [];
+            var modsIds = mods.Select(x => x.UserId);
+
+            var vips = (await Api.GetVips(BroadcasterId))?.Data ?? [];
+            var vipsIds = vips.Select(x => x.UserId);
+
+            var chatters = (await Api.GetChatters(BroadcasterId, BroadcasterId))?.Data ?? [];
+            var broadcaster = chatters.FirstOrDefault(x => x.UserId == BroadcasterId)
+                ?? new TwitchChatter { UserId = BroadcasterId, UserLogin = BroadcasterUsername, UserName = BroadcasterUsername };
+
+            var filteredChatters = chatters.ExceptBy(modsIds.Concat(vipsIds).Append(BroadcasterId), x => x.UserId) ?? [];
+            var onlineMods = mods.Join(chatters, x => x.UserId, y => y.UserId, (x, y) => y);
+            var onlineVips = mods.Join(vips, x => x.UserId, y => y.UserId, (x, y) => y);
+
+            return filteredChatters.Select(x => (Type: ChatterType.Chatter, User: x))
+                .Concat(onlineMods.Select(x => (Type: ChatterType.Moderator, User: x)))
+                .Concat(onlineVips.Select(x => (Type: ChatterType.Vip, User: x)))
+                .Append((Type: ChatterType.Broadcaster, User: broadcaster))
+                .ToLookup(x => x.Type, x => x.User);
+        }
+        catch (Exception ex)
+        {
+            Popup.Add($"An error occurred while fetching chatters: {ex.Message}", Severity.Error);
+            Log.LogError(ex, "An error occurred while fetching chatters: ");
+
+            return null;
+        }
+    }
+
+    private async Task UpdateChattersTask(CancellationToken cancellation)
+    {
+        _chatters = await GetChatters();
+        await InvokeAsync(StateHasChanged);
+
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        while (await timer.WaitForNextTickAsync(cancellation))
+        {
+            try
+            {
+                _chatters = await GetChatters();
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (OperationCanceledException)
+            {
+                // expected when the connection is closed
+            }
+        }
+    }
+
+    private void ConnectionStatusChanged(WebSocketState wsState)
+    {
+        if (wsState == WebSocketState.Open)
+        {
+            _connectionCancSource = new CancellationTokenSource();
+            _updateChattersTask = UpdateChattersTask(_connectionCancSource.Token);
+        }
+        else
+        {
+            _connectionCancSource?.Cancel();
+            _connectionCancSource?.Dispose();
+            _connectionCancSource = null;
+
+            _chatters = null;
+            StateHasChanged();
+        }
+    }
+
+
+    public void Dispose()
+    {
+        _eventHandlers.Dispose();
+    }
+}

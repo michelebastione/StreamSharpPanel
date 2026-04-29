@@ -73,6 +73,16 @@ public class AssetService(ILogger<AssetService> logger, ApiCallerService api)
         }
     }
 
+    public BadgeInfo? GetChannelBadgeOrDefault(string broadcasterId, string setId, string version)
+    {
+        return ChannelBadges.GetValueOrDefault(broadcasterId)
+            ?.GetBadgeSet(setId)
+            ?.GetBadgeInfo(version) 
+
+        ?? GlobalBadges
+            ?.GetBadgeSet(setId)?.GetBadgeInfo(version);
+    }
+
     public async Task<bool> UpdateChannelEmotesUrls(string setId)
     {
         try

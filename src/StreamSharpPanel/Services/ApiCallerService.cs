@@ -15,8 +15,8 @@ public class ApiCallerService(ILogger<ApiCallerService> logger, IHttpClientFacto
     /// </summary>
     internal async Task<GetUserResponse?> GetUsersInfo(IEnumerable<string>? usernames = null, IEnumerable<string>? ids = null, CancellationToken cancellationToken = default)
     {
-        usernames ??= [];
         ids ??= [];
+        usernames ??= [];
 
         var loginQuery = usernames.Select(u => new KeyValuePair<string, string?>("login", u));
         var idQuery = ids

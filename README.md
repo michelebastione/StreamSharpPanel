@@ -8,7 +8,7 @@ It's written entirely in .NET and Blazor and makes use of [MudBlazors](https://m
 - Send messages directly within the chat panel
 - Full logging of chat messages to file
 - View and edit the current stream's information
-- Support for moderation actions: ban or timeout users, delete chat messages, review automodded messages
+- Support for moderation actions: monitor chatters, ban or timeout users, delete chat messages, review automodded messages
 - Notifications for the most common channel events: follows, subscriptions, raids, cheers, redemptions
 
 ## Quickstart
@@ -20,11 +20,10 @@ You are advised to do this if you are forking the project.
 
 ## Currently not available / Coming soon
 - Manage Announcements
-- Rendering Channel Cheermotes and Channel Badges
+- Rendering Channel Cheermotes
 - Rendering emotes in the message input field
 - Making Clips and Raids
 - Viewing chatters' informations
-- More channel events handling
 
 ## Contributing
 This is mainly a hobby project but I'd be happy if other people found it useful, 
