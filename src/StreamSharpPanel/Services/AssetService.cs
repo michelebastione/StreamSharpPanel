@@ -11,8 +11,8 @@ public class AssetService(ILogger<AssetService> logger, ApiCallerService api)
 
     public BadgeSetCollection GlobalBadges { get; private set; } = new();
     public GlobalEmoteSet GlobalEmoticons { get; private set; } = new();
-    public CheermoteCollection GlobalCheermotes { get; private set; } = new();
 
+    public Dictionary<string, CheermoteSet> Cheermotes { get; private set; } = [];
     public Dictionary<string, BadgeSetCollection> ChannelBadges { get; private set; } = [];
     public Dictionary<string, ChannelEmoteSet> ChannelEmoticons { get; private set; } = [];
     public ILookup<TwitchUser, UserEmoteInfo>? UserEmotes { get; private set; }
@@ -37,7 +37,7 @@ public class AssetService(ILogger<AssetService> logger, ApiCallerService api)
         {
             GlobalBadges = await api.GetGlobalBadgeSet() ?? new();
             GlobalEmoticons = await api.GetGlobalEmoteSet() ?? new();
-            GlobalCheermotes = await api.GetCheermotes() ?? new();
+
             _updateStream.OnNext(new BadgesUpdated());
             return true;
         }
@@ -144,6 +144,36 @@ public class AssetService(ILogger<AssetService> logger, ApiCallerService api)
             logger.LogError(ex, "An error occurred while fetching badges of user {User}: ", setId);    
             return false;
         }
+    }
+
+    internal async Task UpdateCheermotes(string? broadcasterId = null)
+    {
+        var cheermotes = await api.GetCheermotes(broadcasterId);
+        foreach(var set in cheermotes?.Data ?? [])
+        {
+            Cheermotes.TryAdd(set.Prefix, set);
+        }
+    }
+
+    /// <summary>
+    /// Retrieves a specific cheermote's animated and static URLs
+    /// </summary>
+    /// <param name="prefix">The id of the Cheermote Set</param>
+    /// <param name="tier">The id of the Cheermote Type</param>
+    /// <param name="darkMode">Whether the dashboard is set to display dark mode</param>
+    /// <param name="size">Size of the cheermote. Can only be one of "1", "1.5", "2", "3" and "4"</param>
+    /// <returns></returns>
+    internal (string? Animated, string? Static) TryGetCheermoteUrl(string prefix, string tier, bool darkMode = false, string size = "1")
+    {
+        var cheermoteSet = Cheermotes.GetValueOrDefault(prefix);
+        var cheermoteTier= cheermoteSet?.CheermoteTiers.GetValueOrDefault(tier);
+
+        var images = darkMode 
+            ? cheermoteTier?.Images.Dark 
+            : cheermoteTier?.Images.Light;
+
+        return (images?.Animated.GetValueOrDefault(size),
+            images?.Static.GetValueOrDefault(size));
     }
 
     internal IDisposable OnAssetsUpdated<T>(Action<T> callback) where T : AssetsUpdated, new()

@@ -10,6 +10,7 @@
 @inject EventSubService Events
 @inject ApiCallerService Api
 @inject AssetService Asset
+@inject StateService State
 
 
 <MudPaper Class="pa-2" Style="overflow:hidden auto;" Height="@Height" Elevation="1">
@@ -67,15 +68,10 @@
                                         break;
 
                                     case MessageFragmentType.Cheermote when fragment.Cheermote is { } cheer:
-                                        var image = Asset.GlobalCheermotes.Data
-                                            .FirstOrDefault(x => x.Prefix == cheer.Prefix)
-                                            ?.Tiers.FirstOrDefault(x => x.Id == cheer.Tier.ToString())
-                                            ?.Images.Light;
-
-                                        var src = image?.Animated.TryGetValue("1", out var anim) is true ? anim : "";
-                                        var srcFall = image?.Animated.TryGetValue("1", out var @static) is true ? @static : "";
-
-                                        <MudImage Src="@src" FallbackSrc="@srcFall" Alt="@fragment.Text" Style="vertical-align:middle" />
+                                        var urls = Asset.TryGetCheermoteUrl(cheer.Prefix, cheer.Tier.ToString(), State.IsDarkMode);
+                                        <MudTooltip Text="@($"{cheer.Bits} bits cheer!")">
+                                            <MudImage Src="@urls.Animated" FallbackSrc="@urls.Static" Alt="@fragment.Text" Style="vertical-align:middle" />
+                                        </MudTooltip>
                                         break;
 
                                     case MessageFragmentType.Mention when fragment.Mention is { UserName: var user and not "", UserId: var id }:
@@ -430,11 +426,14 @@
         try
         {
             if (ws == WebSocketState.Open)
+            {
                 await Asset.UpdateChannelBadgesUrls(BroadcasterId);
+                await Asset.UpdateCheermotes(BroadcasterId);
+            }
         }
         catch(Exception ex)
         {
-            Popup.Add($"An error occurred while updating chatter badges: {ex.Message}", Severity.Warning);
+            Popup.Add($"An error occurred while fetching chatter badges and cheermotes: {ex.Message}", Severity.Warning);
             Log.LogWarning(ex, "An error occurred while fetching chatter badges: ");
         }
     }

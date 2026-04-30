@@ -20,10 +20,9 @@ You are advised to do this if you are forking the project.
 
 ## Currently not available / Coming soon
 - Manage Announcements
-- Rendering Channel Cheermotes
+- Making Clips and starting Raids
+- Viewing chatters' detailed informations
 - Rendering emotes in the message input field
-- Making Clips and Raids
-- Viewing chatters' informations
 
 ## Contributing
 This is mainly a hobby project but I'd be happy if other people found it useful, 
